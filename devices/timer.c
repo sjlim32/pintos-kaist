@@ -70,31 +70,42 @@ timer_calibrate (void) {
 	printf ("%'"PRIu64" loops/s.\n", (uint64_t) loops_per_tick * TIMER_FREQ);
 }
 
-/* Returns the number of timer ticks since the OS booted. */
+//! OS 부팅 이후의 타이머 틱 수를 반환 //
 int64_t
 timer_ticks (void) {
-	enum intr_level old_level = intr_disable ();
-	int64_t t = ticks;
+	enum intr_level old_level = intr_disable ();   //* Level이 뭐지 ?
+	int64_t t = ticks;             //* t = ticks 이고, t를 반환함. ticks = time_sleep 함수에서 중단하고싶은 틱 수
+
 	intr_set_level (old_level);
-	barrier ();
+	barrier ();                    //* barrier의 역할?
 	return t;
 }
 
 /* Returns the number of timer ticks elapsed since THEN, which
    should be a value once returned by timer_ticks(). */
+//! elapse = 시간이 경과하다.
 int64_t
-timer_elapsed (int64_t then) {
-	return timer_ticks () - then;
+timer_elapsed (int64_t then) {    //* then = timer_sleep이 호출된 틱 (시작 시간)
+	return timer_ticks () - then;   //* timer_ticks() = 현재 틱 (현재 시간), 즉 현재 시간으로부터 경과한 시간을 리턴
 }
 
-/* Suspends execution for approximately TICKS timer ticks. */
+/*
+! 호출 스레드의 실행을 ticks 이 지날 때까지 중단
+! 실시간으로 작동하는 스레드에 유용함
+*/
 void
 timer_sleep (int64_t ticks) {
-	int64_t start = timer_ticks ();
+//*********** 의사 코드 ***********//
+	// int64_t start = timer_ticks ();
+  ////* ASSERT : 주어진 조건이 참이어야 함을 보장함. 거짓일 경우 ASSERT는 프로그램을 중단하고 오류 메세지를 출력
+	// ASSERT (intr_get_level () == INTR_ON); //* 인터럽트가 현재 활성화 상태인지 확인
+	// while (timer_elapsed (start) < ticks)  //* 경과한 시간(elapse)이 ticks 보다 짧으면, thread_yield()를 계속 호춣
+	// 	thread_yield ();                      //* yield = 양보, 즉 순서를 계속 양보함
+//*********** end ***********//
+//?  구현 방향성 : 스레드의 실행을 적어도 ticks 만큼 중단함
+//?  1. 시스템이 활동 상태인 경우, 굳이 ticks 이후에 바로 깨어날 필요 없음
+//?  2. 단지, 올바른 시간(right amount of time) 만큼 대기한 후, 준비 큐(ready queue)에 넣어주기만 하면 됨
 
-	ASSERT (intr_get_level () == INTR_ON);
-	while (timer_elapsed (start) < ticks)
-		thread_yield ();
 }
 
 /* Suspends execution for approximately MS milliseconds. */
