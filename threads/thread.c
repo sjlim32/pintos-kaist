@@ -24,35 +24,32 @@
    Do not modify this value. */
 #define THREAD_BASIC 0xd42df210
 
-/* List of processes in THREAD_READY state, that is, processes
-   that are ready to run but not actually running. */
-static struct list ready_list;
+static struct list ready_list;                //* 준비 완료된 스레드 리스트 : 아직 실행은 되지 않음
+static struct list sleep_list;
 
-/* Idle thread. */
-static struct thread *idle_thread;
+static struct thread *idle_thread;            //* 대기 스레드 : ready_list에 준비된 스레드가 없을 때 호출되는 스레드
+static struct thread *initial_thread;         //* 초기화 스레드 : init.c 의 main() 함수에서 실행됨
 
-/* Initial thread, the thread running init.c:main(). */
-static struct thread *initial_thread;
+static struct lock tid_lock;                  //* tid 값을 가지는 스레드를 lock 함
 
-/* Lock used by allocate_tid(). */
-static struct lock tid_lock;
+static struct list destruction_req;           //* 스레드 파괴 요청
 
-/* Thread destruction requests */
-static struct list destruction_req;
+//! 스레드별 틱수
+static long long idle_ticks;                  //* 대기 틱(idle 스레드)
+static long long kernel_ticks;                //* 커널 틱(커널 스레드)
+static long long user_ticks;                  //* 유저 틱(유저 프로그램 스레드)
 
-/* Statistics. */
-static long long idle_ticks;    /* # of timer ticks spent idle. */
-static long long kernel_ticks;  /* # of timer ticks in kernel threads. */
-static long long user_ticks;    /* # of timer ticks in user programs. */
+//! 스레드별 전체 틱 및 스레드가 양보한 이후 진행된 틱
+#define TIME_SLICE 4                          //* 각 스레드에게 할당된 전체 틱
+static unsigned thread_ticks;                 //* 마지막으로 양보(yield)한 이후의 타이머 틱 수
 
-/* Scheduling. */
-#define TIME_SLICE 4            /* # of timer ticks to give each thread. */
-static unsigned thread_ticks;   /* # of timer ticks since last yield. */
+/*
+! false(default) : round-robin 스케쥴러
+! true : multi-level feedback queue 스케쥴러
+! 커널 명령줄 : -o mlfqs
+*/
+bool thread_mlfqs;                            
 
-/* If false (default), use round-robin scheduler.
-   If true, use multi-level feedback queue scheduler.
-   Controlled by kernel command-line option "-o mlfqs". */
-bool thread_mlfqs;
 
 static void kernel_thread (thread_func *, void *aux);
 
@@ -63,14 +60,15 @@ static void do_schedule(int status);
 static void schedule (void);
 static tid_t allocate_tid (void);
 
-/* Returns true if T appears to point to a valid thread. */
-#define is_thread(t) ((t) != NULL && (t)->magic == THREAD_MAGIC)
+#define is_thread(t) ((t) != NULL && (t)->magic == THREAD_MAGIC) //* t 가 유효한 스레드를 가리키면, true를 리턴
 
-/* Returns the running thread.
- * Read the CPU's stack pointer `rsp', and then round that
- * down to the start of a page.  Since `struct thread' is
- * always at the beginning of a page and the stack pointer is
- * somewhere in the middle, this locates the curent thread. */
+/* 
+! 실행 중인 스레드 반환
+ * CPU의 스택 포인터 'rsp'를 읽음
+ * 해당 포인터를 페이지의 시작점으로 내림
+ * struct thread가 항상 페이지의 시작점에 있고, 스택포인터는 중간 어딘가에 위치함
+ * 따라서 항상 현재 스레드를 찾을 수 있음
+*/
 #define running_thread() ((struct thread *) (pg_round_down (rrsp ())))
 
 
@@ -92,6 +90,8 @@ static uint64_t gdt[3] = { 0, 0x00af9a000000ffff, 0x00cf92000000ffff };
 
    It is not safe to call thread_current() until this function
    finishes. */
+
+//******************************************** 함수 ********************************************//
 void
 thread_init (void) {
 	ASSERT (intr_get_level () == INTR_OFF);
@@ -108,6 +108,7 @@ thread_init (void) {
 	/* Init the globla thread context */
 	lock_init (&tid_lock);
 	list_init (&ready_list);
+  list_init (&sleep_list);
 	list_init (&destruction_req);
 
 	/* Set up a thread structure for the running thread. */
@@ -140,17 +141,17 @@ thread_tick (void) {
 	struct thread *t = thread_current ();
 
 	/* Update statistics. */
-	if (t == idle_thread)
+	if (t == idle_thread)                   //* 현재 스레드가 idle_thread일 경우, idle_ticks을 증가시킴
 		idle_ticks++;
 #ifdef USERPROG
 	else if (t->pml4 != NULL)
 		user_ticks++;
 #endif
 	else
-		kernel_ticks++;
+		kernel_ticks++;                       //* idle_ticks가 아닌 경우, kernel_ticks를 증가시킴
 
 	/* Enforce preemption. */
-	if (++thread_ticks >= TIME_SLICE)
+	if (++thread_ticks >= TIME_SLICE)       //* thread_ticks가 스레드에게 할당된 틱에 도달한 경우, 컨텍스트 스위칭 실시
 		intr_yield_on_return ();
 }
 
@@ -216,6 +217,7 @@ thread_create (const char *name, int priority,
    This function must be called with interrupts turned off.  It
    is usually a better idea to use one of the synchronization
    primitives in synch.h. */
+//! 스레드 블락(THREAD BLOCK) : 스레드를 재우고, ready_list의 다음 스레드를 실행
 void
 thread_block (void) {
 	ASSERT (!intr_context ());
@@ -232,6 +234,7 @@ thread_block (void) {
    be important: if the caller had disabled interrupts itself,
    it may expect that it can atomically unblock a thread and
    update other data. */
+//! 스레드 언블락(THREAD UNBLOCK) : 스레드 t를 깨우고, ready_list에 넣음
 void
 thread_unblock (struct thread *t) {
 	enum intr_level old_level;
@@ -243,6 +246,46 @@ thread_unblock (struct thread *t) {
 	list_push_back (&ready_list, &t->elem);
 	t->status = THREAD_READY;
 	intr_set_level (old_level);
+}
+
+//! 스레드 재우기
+void
+thread_sleep (int64_t ticks) {
+  enum intr_level old_level;
+  struct thread *now_t = thread_current ();
+  now_t->waken_ticks = ticks;
+
+  ASSERT (!intr_context ());
+  old_level = intr_disable();
+
+  if (now_t != idle_thread) {
+    list_push_back(&sleep_list, &now_t->elem);
+  }
+  thread_block ();
+  intr_set_level (old_level);
+}
+
+//! 스레드 깨우기
+void
+thread_wakeup(int64_t ticks) {
+  // 현재 ticks
+  // sleep_list 에는 미래의 ticks가 저장되어 있음
+  // if list_entry에서 값을 확인하고, 매 인터럽트마다 깨워야할 스레드가 있는지 확인해야함
+  struct list_elem *e = list_begin (&sleep_list);
+
+  while (e != list_end (&sleep_list)) {
+    struct thread *chk_t = list_entry (e, struct thread, elem);
+    // ASSERT (is_thread (chk_t));
+    int64_t woke_ticks = chk_t->waken_ticks;
+
+    if (woke_ticks <= ticks) {
+      e = list_remove (e);
+      thread_unblock (chk_t);
+    }
+    else {
+      e = list_next(e);
+    }
+  }
 }
 
 /* Returns the name of the running thread. */
