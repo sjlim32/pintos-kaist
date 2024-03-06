@@ -21,6 +21,7 @@ bool cmp_priority_sema (struct list_elem *a, struct list_elem *b, void *aux); //
 struct lock {
 	struct thread *holder;      /* Thread holding lock (for debugging). */
 	struct semaphore semaphore; /* Binary semaphore controlling access. */
+  int holder_priority;
 };
 
 void lock_init (struct lock *);
