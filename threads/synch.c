@@ -207,22 +207,10 @@ lock_acquire (struct lock *lock) {
   if (sema_try_down (&lock->semaphore)) {
     lock->holder = curr;
     lock->holder_priority = curr->priority;
-    // list_insert(&curr->donations, &curr->d_elem);
   } 
   else {
-    curr->wait_on_lock = &lock;                           // 실패한 스레드에게 현재 기다리고 있는 락(의 주소) 저장
-    
-    struct thread *locking = lock->holder;               // sema_down할 락을 현재 보유한 스레드 ( 현재 스레드 )
-    list_insert_ordered (&locking->donations, &curr->d_elem, cmp_priority, NULL);   // donations 리스트 우선순위 순 정렬
-
-    // int higher_priority = (list_entry (list_begin (&locking->donations), struct thread, d_elem))->priority;    
-    struct list_elem *e           = list_begin (&locking->donations);
-    struct thread    *higher_t    = list_entry (e, struct thread, d_elem);
-    int higher_priority = higher_t->priority; 
-    
-    locking->priority = (locking->priority < higher_priority)
-    ? lock->holder_priority 
-    : higher_priority;
+    // lock->semaphore->waiters 에 넣어줌
+    // lock->semaphore->waiters 중에 가장 우선순위 높은 놈을 내 우선순위로 함
   }
 }
 
@@ -258,27 +246,11 @@ lock_release (struct lock *lock) {
 
   struct thread *locking = lock->holder;
 
-  if (&locking->donations) {
-    struct list_elem *e           = list_begin (&locking->donations);
-    struct thread    *curr        = list_pop_front (e);
+  // lock->semaphore->waiters 중에서 우선순위 가장 큰 놈 가져오고 waiters 에서 제거 = 함수
+  // 남은 lock->semaphore->waiters 중에서 우선순위 가장 큰 놈으로 내 우선순위 변경 = 함수
+  lock->holder = NULL;
+  sema_up (&lock->semaphore);
 
-    // lock 최신화
-    lock->holder = curr;
-    lock->holder_priority = curr->priority;
-
-    //memcpy(curr->donations, locking->donations, sizeof(locking->donations));
-    curr->donations = locking->donations;
-    struct list_elem *ne          = list_begin (&curr->donations);
-
-    int higher_priority = (list_entry (ne, struct thread, d_elem))->priority;    
-    curr->priority = (curr->priority < higher_priority)
-    ? lock->holder_priority 
-    : higher_priority;
-  }
-  else {
-    lock->holder = NULL;
-    sema_up (&lock->semaphore);
-  }
 }
 
 /* Returns true if the current thread holds LOCK, false
