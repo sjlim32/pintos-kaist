@@ -118,25 +118,8 @@ sema_up (struct semaphore *sema) {
   }
 	sema->value++;
 	intr_set_level (old_level);
-}
-
-// bool cmp_priority (struct list_elem *a, struct list_elem *b, void *aux);
-//! 세마포어 elem 안의 sema 간의 우선순위 비교
-bool
-cmp_priority_sema (struct list_elem *a, struct list_elem *b, void *aux UNUSED) {
-  struct semaphore_elem *a_sema = list_entry (a, struct semaphore_elem, elem);
-  struct semaphore_elem *b_sema = list_entry (b, struct semaphore_elem, elem);
-
-  struct list *a_waiter = &(a_sema->semaphore.waiters);
-  struct list *b_waiter = &(b_sema->semaphore.waiters);
-
-  struct thread *a_thread = list_entry (list_begin (a_waiter), struct thread, elem);
-  struct thread *b_thread = list_entry (list_begin (b_waiter), struct thread, elem);
   
-  if (a_thread->priority > b_thread->priority)
-    return true;
-  else
-    return false;
+  thread_yield ();
 }
 
 static void sema_test_helper (void *sema_);
@@ -345,4 +328,23 @@ cond_broadcast (struct condition *cond, struct lock *lock) {
 
 	while (!list_empty (&cond->waiters))
 		cond_signal (cond, lock);
+}
+
+// bool cmp_priority (struct list_elem *a, struct list_elem *b, void *aux);
+//! 세마포어 elem 안의 sema 간의 우선순위 비교
+bool
+cmp_priority_sema (struct list_elem *a, struct list_elem *b, void *aux UNUSED) {
+  struct semaphore_elem *a_sema = list_entry (a, struct semaphore_elem, elem);
+  struct semaphore_elem *b_sema = list_entry (b, struct semaphore_elem, elem);
+
+  struct list *a_waiter = &(a_sema->semaphore.waiters);
+  struct list *b_waiter = &(b_sema->semaphore.waiters);
+
+  struct thread *a_thread = list_entry (list_begin (a_waiter), struct thread, elem);
+  struct thread *b_thread = list_entry (list_begin (b_waiter), struct thread, elem);
+  
+  if (a_thread->priority > b_thread->priority)
+    return true;
+  else
+    return false;
 }

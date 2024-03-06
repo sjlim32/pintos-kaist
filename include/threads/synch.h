@@ -15,7 +15,7 @@ void sema_down (struct semaphore *);
 bool sema_try_down (struct semaphore *);
 void sema_up (struct semaphore *);
 void sema_self_test (void);
-bool cmp_priority_sema (const struct list_elem *a, const struct list_elem *b, void *aux); //* 세마 elem 안의 sema 간 우선순위 비교
+bool cmp_priority_sema (struct list_elem *a, struct list_elem *b, void *aux); //* 세마 elem 안의 sema 간 우선순위 비교
 
 /* Lock. */
 struct lock {
