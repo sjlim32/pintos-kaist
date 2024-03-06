@@ -57,6 +57,7 @@ sema_init (struct semaphore *sema, unsigned value) {
    interrupts disabled, but if it sleeps then the next scheduled
    thread will probably turn interrupts back on. This is
    sema_down function. */
+//! 세마 다운   
 void
 sema_down (struct semaphore *sema) {
 	enum intr_level old_level;
@@ -66,7 +67,8 @@ sema_down (struct semaphore *sema) {
 
 	old_level = intr_disable ();
 	while (sema->value == 0) {
-		list_push_back (&sema->waiters, &thread_current ()->elem);
+    // list_push_back (&sema->waiters, &thread_current ()->elem);
+		list_insert_ordered (&sema->waiters, &thread_current ()->elem, cmp_priority, NULL);
 		thread_block ();
 	}
 	sema->value--;
@@ -102,6 +104,7 @@ sema_try_down (struct semaphore *sema) {
    and wakes up one thread of those waiting for SEMA, if any.
 
    This function may be called from an interrupt handler. */
+//! 세마 업
 void
 sema_up (struct semaphore *sema) {
 	enum intr_level old_level;
@@ -109,11 +112,31 @@ sema_up (struct semaphore *sema) {
 	ASSERT (sema != NULL);
 
 	old_level = intr_disable ();
-	if (!list_empty (&sema->waiters))
-		thread_unblock (list_entry (list_pop_front (&sema->waiters),
-					struct thread, elem));
+	if (!list_empty (&sema->waiters)) {
+		list_sort (&sema->waiters, cmp_priority, NULL);
+    thread_unblock (list_entry (list_pop_front (&sema->waiters), struct thread, elem));
+  }
 	sema->value++;
 	intr_set_level (old_level);
+}
+
+// bool cmp_priority (struct list_elem *a, struct list_elem *b, void *aux);
+//! 세마포어 elem 안의 sema 간의 우선순위 비교
+bool
+cmp_priority_sema (struct list_elem *a, struct list_elem *b, void *aux UNUSED) {
+  struct semaphore_elem *a_sema = list_entry (a, struct semaphore_elem, elem);
+  struct semaphore_elem *b_sema = list_entry (b, struct semaphore_elem, elem);
+
+  struct list *a_waiter = &(a_sema->semaphore.waiters);
+  struct list *b_waiter = &(b_sema->semaphore.waiters);
+
+  struct thread *a_thread = list_entry (list_begin (a_waiter), struct thread, elem);
+  struct thread *b_thread = list_entry (list_begin (b_waiter), struct thread, elem);
+  
+  if (a_thread->priority > b_thread->priority)
+    return true;
+  else
+    return false;
 }
 
 static void sema_test_helper (void *sema_);
@@ -282,7 +305,8 @@ cond_wait (struct condition *cond, struct lock *lock) {
 	ASSERT (lock_held_by_current_thread (lock));
 
 	sema_init (&waiter.semaphore, 0);
-	list_push_back (&cond->waiters, &waiter.elem);
+	// list_push_back (&cond->waiters, &waiter.elem);
+  list_insert_ordered (&cond->waiters, &waiter.elem, cmp_priority_sema, NULL);
 	lock_release (lock);
 	sema_down (&waiter.semaphore);
 	lock_acquire (lock);
@@ -302,9 +326,10 @@ cond_signal (struct condition *cond, struct lock *lock UNUSED) {
 	ASSERT (!intr_context ());
 	ASSERT (lock_held_by_current_thread (lock));
 
-	if (!list_empty (&cond->waiters))
-		sema_up (&list_entry (list_pop_front (&cond->waiters),
-					struct semaphore_elem, elem)->semaphore);
+	if (!list_empty (&cond->waiters)) {
+    list_sort (&cond->waiters, cmp_priority_sema, NULL);
+		sema_up (&list_entry (list_pop_front (&cond->waiters), struct semaphore_elem, elem)->semaphore);
+  }
 }
 
 /* Wakes up all threads, if any, waiting on COND (protected by
