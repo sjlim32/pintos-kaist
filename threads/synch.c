@@ -177,6 +177,7 @@ lock_init (struct lock *lock) {
 	ASSERT (lock != NULL);
 
 	lock->holder = NULL;
+  lock->holder_priority = 0;
 	sema_init (&lock->semaphore, 1);
 }
 
@@ -194,24 +195,10 @@ lock_acquire (struct lock *lock) {
 	ASSERT (!intr_context ());
 	ASSERT (!lock_held_by_current_thread (lock));
 	
-  // sema_down (&lock->semaphore);
-  // lock->holder = thread_current ();
-  
-  //? sema_down을 성공했다면, 획득한 lock에 스레드가 저장됨
-  //? sema_down을 실패했을 때 (sema try down), lock 주소값을 스레드에 저장, sema_down 실패한 스레드의 우선순위 저장
-  //? lock을 소유한 스레드의 donations 리스트에 sema_down을 실패한 스레드를 저장. donations 리스트 안의 값들끼리 우선순위 비교 정렬
-  //? donations 안의 스레드들의 우선순위를 비교하여, 가장 높은 우선순위를 가지도록 유지
-
-  struct thread *curr = thread_current ();
-
-  if (sema_try_down (&lock->semaphore)) {
-    lock->holder = curr;
-    lock->holder_priority = curr->priority;
-  } 
-  else {
-    // lock->semaphore->waiters 에 넣어줌
-    // lock->semaphore->waiters 중에 가장 우선순위 높은 놈을 내 우선순위로 함
-  }
+  donate_priority (lock);
+  sema_down (&lock->semaphore);
+  lock->holder_priority = thread_current ()->priority;
+  lock->holder = thread_current ();
 }
 
 /* Tries to acquires LOCK and returns true if successful or false
@@ -243,15 +230,135 @@ void
 lock_release (struct lock *lock) {
 	ASSERT (lock != NULL);
 	ASSERT (lock_held_by_current_thread (lock));
+  struct thread *holder = lock->holder;
 
-  struct thread *locking = lock->holder;
+  // if (!list_empty (&holder->donations)) {
+  //   list_pop_front(&holder->donations);
+  // }
 
-  // lock->semaphore->waiters 중에서 우선순위 가장 큰 놈 가져오고 waiters 에서 제거 = 함수
-  // 남은 lock->semaphore->waiters 중에서 우선순위 가장 큰 놈으로 내 우선순위 변경 = 함수
+  holder->priority = lock->holder_priority;
+  lock->holder_priority = 0;
   lock->holder = NULL;
   sema_up (&lock->semaphore);
-
 }
+
+// void
+// lock_acquire (struct lock *lock) {
+// 	ASSERT (lock != NULL);
+// 	ASSERT (!intr_context ());
+// 	ASSERT (!lock_held_by_current_thread (lock));
+	
+//   // sema_down (&lock->semaphore);
+//   // lock->holder = thread_current ();
+  
+//   //? sema_down을 성공했다면, 획득한 lock에 스레드가 저장됨
+//   //? sema_down을 실패했을 때 (sema try down), lock 주소값을 스레드에 저장, sema_down 실패한 스레드의 우선순위 저장
+//   //? lock을 소유한 스레드의 donations 리스트에 sema_down을 실패한 스레드를 저장. donations 리스트 안의 값들끼리 우선순위 비교 정렬
+//   //? donations 안의 스레드들의 우선순위를 비교하여, 가장 높은 우선순위를 가지도록 유지
+
+//   struct thread *curr = thread_current ();
+
+  // if (sema_try_down (&lock->semaphore)) {
+  //   lock->holder = curr;
+  //   lock->holder_priority = curr->priority;
+  //   // list_insert(&curr->donations, &curr->d_elem);
+  // } 
+  // else {
+  //   curr->wait_on_lock = &lock;                           // 실패한 스레드에게 현재 기다리고 있는 락(의 주소) 저장
+    
+  //   struct thread *locking = lock->holder;               // sema_down할 락을 현재 보유한 스레드 ( 현재 스레드 )
+  //   list_insert_ordered (&locking->donations, &curr->d_elem, cmp_priority, NULL);   // donations 리스트 우선순위 순 정렬
+
+  //   // int higher_priority = (list_entry (list_begin (&locking->donations), struct thread, d_elem))->priority;    
+  //   struct list_elem *e           = list_begin (&locking->donations);
+  //   struct thread    *higher_t    = list_entry (e, struct thread, d_elem);
+  //   int higher_priority = higher_t->priority; 
+    
+  //   locking->priority = (locking->priority < higher_priority)
+  //   ? lock->holder_priority 
+  //   : higher_priority;
+  // }
+// }
+
+// /* Releases LOCK, which must be owned by the current thread.
+//    This is lock_release function.
+
+//    An interrupt handler cannot acquire a lock, so it does not
+//    make sense to try to release a lock within an interrupt
+//    handler. */
+// void
+// lock_release (struct lock *lock) {
+// 	ASSERT (lock != NULL);
+// 	ASSERT (lock_held_by_current_thread (lock));
+
+//   struct thread *locking = lock->holder;
+
+//   if (&locking->donations) {
+//     struct list_elem *e           = list_begin (&locking->donations);
+//     struct thread    *curr        = list_pop_front (e);
+
+//     // lock 최신화
+//     lock->holder = curr;
+//     lock->holder_priority = curr->priority;
+
+//     //memcpy(curr->donations, locking->donations, sizeof(locking->donations));
+//     curr->donations = locking->donations;
+//     struct list_elem *ne          = list_begin (&curr->donations);
+
+//     int higher_priority = (list_entry (ne, struct thread, d_elem))->priority;    
+//     curr->priority = (curr->priority < higher_priority)
+//     ? lock->holder_priority 
+//     : higher_priority;
+//   }
+//   else {
+//     lock->holder = NULL;
+//     sema_up (&lock->semaphore);
+//   }
+// }
+
+void
+donate_priority (struct lock *lock) {
+  ASSERT (!intr_context ());
+  ASSERT (!lock_held_by_current_thread (lock));
+  enum intr_level old_level;
+
+  struct thread *curr = thread_current ();
+  struct thread *holder = lock->holder;
+
+  if (holder != NULL) {
+    curr->wait_on_lock = lock;
+    
+    // struct list_elem *e = list_begin(&holder->donations);
+    old_level = intr_disable ();
+
+    if (curr->priority > holder->priority) {                                     //* priority donate
+      holder->priority = curr->priority;
+      // list_push_back (&holder->donations, &curr->d_elem);                        //* insert donations list
+    }
+    intr_set_level (old_level);
+
+    return;
+    // donate_priority (lock);
+  }
+}
+
+void
+recover_priority (struct lock *lock) {
+  enum intr_level old_level;
+  struct thread *holder = lock->holder;
+
+  // old_level = intr_disable ();
+
+  // if (!list_empty (&holder->donations)) {
+  //   list_pop_front(&holder->donations);
+  // }
+  holder->priority = lock->holder_priority;
+  // intr_set_level (old_level);
+
+  lock->holder_priority = 0;
+}
+
+
 
 /* Returns true if the current thread holds LOCK, false
    otherwise.  (Note that testing whether some other thread holds

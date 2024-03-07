@@ -26,7 +26,6 @@
 
 static struct list ready_list;                //* 준비 완료된 스레드 리스트 : 아직 실행은 되지 않음
 static struct list sleep_list;                //* 자고있는 스레드
-static struct list donation;                  //* 기부자 리스트
 
 static struct thread *idle_thread;            //* 대기 스레드 : ready_list에 준비된 스레드가 없을 때 호출되는 스레드
 static struct thread *initial_thread;         //* 초기화 스레드 : init.c 의 main() 함수에서 실행됨
@@ -110,13 +109,13 @@ thread_init (void) {
 	lock_init (&tid_lock);
 	list_init (&ready_list);
   list_init (&sleep_list);
-  list_init (&donation);
 	list_init (&destruction_req);
 
 	/* Set up a thread structure for the running thread. */
 	initial_thread = running_thread ();
 	init_thread (initial_thread, "main", PRI_DEFAULT);
 	initial_thread->status = THREAD_RUNNING;
+  list_init(&initial_thread->donations);
 	initial_thread->tid = allocate_tid ();
 }
 
@@ -267,7 +266,8 @@ thread_unblock (struct thread *t) {
 
 	old_level = intr_disable ();
 	ASSERT (t->status == THREAD_BLOCKED);
-  list_insert_ordered(& ready_list, &t->elem, cmp_priority, NULL);
+  if (t != idle_thread)
+    list_insert_ordered(&ready_list, &t->elem, cmp_priority, NULL);
 	t->status = THREAD_READY;
 	intr_set_level (old_level);
 }
@@ -370,7 +370,7 @@ thread_yield (void) {
 
 	old_level = intr_disable ();
 	if (curr != idle_thread)
-    list_insert_ordered(& ready_list, &curr->elem, cmp_priority, NULL);
+    list_insert_ordered(&ready_list, &curr->elem, cmp_priority, NULL);
 
 	do_schedule (THREAD_READY);
 	intr_set_level (old_level);
