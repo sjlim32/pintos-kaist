@@ -177,6 +177,7 @@ lock_init (struct lock *lock) {
 	ASSERT (lock != NULL);
 
 	lock->holder = NULL;
+  lock->holder_priority = 0;
 	sema_init (&lock->semaphore, 1);
 }
 
@@ -194,24 +195,10 @@ lock_acquire (struct lock *lock) {
 	ASSERT (!intr_context ());
 	ASSERT (!lock_held_by_current_thread (lock));
 	
-  // sema_down (&lock->semaphore);
-  // lock->holder = thread_current ();
-  
-  //? sema_down을 성공했다면, 획득한 lock에 스레드가 저장됨
-  //? sema_down을 실패했을 때 (sema try down), lock 주소값을 스레드에 저장, sema_down 실패한 스레드의 우선순위 저장
-  //? lock을 소유한 스레드의 donations 리스트에 sema_down을 실패한 스레드를 저장. donations 리스트 안의 값들끼리 우선순위 비교 정렬
-  //? donations 안의 스레드들의 우선순위를 비교하여, 가장 높은 우선순위를 가지도록 유지
-
-  struct thread *curr = thread_current ();
-
-  if (sema_try_down (&lock->semaphore)) {
-    lock->holder = curr;
-    lock->holder_priority = curr->priority;
-  } 
-  else {
-    // lock->semaphore->waiters 에 넣어줌
-    // lock->semaphore->waiters 중에 가장 우선순위 높은 놈을 내 우선순위로 함
-  }
+  donate_priority (lock);
+  sema_down (&lock->semaphore);
+  lock->holder_priority = thread_current ()->priority;
+  lock->holder = thread_current ();
 }
 
 /* Tries to acquires LOCK and returns true if successful or false
@@ -243,14 +230,37 @@ void
 lock_release (struct lock *lock) {
 	ASSERT (lock != NULL);
 	ASSERT (lock_held_by_current_thread (lock));
+  struct thread *holder = lock->holder;
 
-  struct thread *locking = lock->holder;
+  holder->priority = lock->holder_priority;
 
-  // lock->semaphore->waiters 중에서 우선순위 가장 큰 놈 가져오고 waiters 에서 제거 = 함수
-  // 남은 lock->semaphore->waiters 중에서 우선순위 가장 큰 놈으로 내 우선순위 변경 = 함수
+  lock->holder_priority = 0;
   lock->holder = NULL;
-  sema_up (&lock->semaphore);
 
+  sema_up (&lock->semaphore);
+}
+
+void
+donate_priority (struct lock *lock) {
+  ASSERT (!intr_context ());
+  ASSERT (!lock_held_by_current_thread (lock));
+  enum intr_level old_level;
+
+  struct thread *curr = thread_current ();
+  struct thread *holder = lock->holder;
+
+  if (holder != NULL) {
+    curr->wait_on_lock = lock;
+    
+    old_level = intr_disable ();
+
+    if (curr->priority > holder->priority) {               //* priority donate
+      holder->priority = curr->priority;                   //* insert donations list
+    }
+    intr_set_level (old_level);
+
+    return;
+  }
 }
 
 /* Returns true if the current thread holds LOCK, false
