@@ -115,6 +115,7 @@ thread_init (void) {
 	initial_thread = running_thread ();
 	init_thread (initial_thread, "main", PRI_DEFAULT);
 	initial_thread->status = THREAD_RUNNING;
+  list_init(&initial_thread->donations);
 	initial_thread->tid = allocate_tid ();
 }
 
@@ -393,6 +394,17 @@ bool
 cmp_priority (struct list_elem *a, struct list_elem *b, void *aux UNUSED) {
   struct thread *curr = list_entry (a, struct thread, elem);
   struct thread *next = list_entry (b, struct thread, elem);
+
+  if (curr->priority > next->priority)
+    return true;
+  else 
+    return false;
+}
+
+bool 
+cmp_priority_donation (struct list_elem *a, struct list_elem *b, void *aux UNUSED) {
+  struct thread *curr = list_entry (a, struct thread, d_elem);
+  struct thread *next = list_entry (b, struct thread, d_elem);
 
   if (curr->priority > next->priority)
     return true;

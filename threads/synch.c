@@ -67,7 +67,7 @@ sema_down (struct semaphore *sema) {
 
 	old_level = intr_disable ();
 	while (sema->value == 0) {
-		list_insert_ordered (&sema->waiters, &thread_current ()->elem, cmp_priority, NULL);
+    list_insert_ordered (&sema->waiters, &thread_current ()->elem, cmp_priority, NULL);
 		thread_block ();
 	}
 	sema->value--;
@@ -229,18 +229,18 @@ void
 lock_release (struct lock *lock) {
 	ASSERT (lock != NULL);
 	ASSERT (lock_held_by_current_thread (lock));
-  struct thread *holder = lock->holder;
 
-  holder->priority = lock->holder_priority;
+  release_donation (lock);
+
   lock->holder_priority = 0;
   lock->holder = NULL;
   sema_up (&lock->semaphore);
+
 }
 
+//! 우선순위 기부
 void
 donate_priority (struct lock *lock) {
-  ASSERT (!intr_context ());
-  ASSERT (!lock_held_by_current_thread (lock));
   enum intr_level old_level;
 
   struct thread *curr = thread_current ();
@@ -249,15 +249,43 @@ donate_priority (struct lock *lock) {
   if (holder != NULL) {
     curr->wait_on_lock = lock;
     
+    if (curr->priority <= holder->priority)                            //* priority donate
+      return
+    
     old_level = intr_disable ();
-
-    if (curr->priority > holder->priority) {               //* priority donate
-      holder->priority = curr->priority;                   //* insert donations list
-    }
+    
+    holder->priority = curr->priority;                   
+    list_insert_ordered(&holder->donations, &curr->d_elem, cmp_priority, NULL); //* insert donations list
+    
     intr_set_level (old_level);
+  }
+}
 
+//! 우선순위 변경
+void
+release_donation (struct lock *lock) {
+  enum intr_level old_level;
+  struct list *wl = &(lock->semaphore).waiters;
+  struct list *dl = &(lock->holder->donations);
+
+  if (list_empty (wl)) {
     return;
   }
+
+  list_sort (dl, cmp_priority_donation, NULL);
+  struct thread *waiter = list_entry (list_begin(wl), struct thread, elem);
+  struct thread *doner = list_entry (list_begin(dl), struct thread, d_elem);
+
+  if (waiter == doner) {
+    list_remove(&doner->d_elem);
+    
+    if (list_empty(dl)) {
+      lock->holder->priority = lock->holder_priority;
+      return;
+    }
+  }
+
+  lock->holder->priority = list_entry (list_begin(dl), struct thread, d_elem)->priority;
 }
 
 /* Returns true if the current thread holds LOCK, false
