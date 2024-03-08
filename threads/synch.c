@@ -176,7 +176,6 @@ lock_init (struct lock *lock) {
 	ASSERT (lock != NULL);
 
 	lock->holder = NULL;
-  lock->holder_priority = 0;
 	sema_init (&lock->semaphore, 1);
 }
 
@@ -196,7 +195,6 @@ lock_acquire (struct lock *lock) {
 	
   donate_priority (lock);
   sema_down (&lock->semaphore);
-  lock->holder_priority = thread_current ()->priority;
   lock->holder = thread_current ();
 }
 
@@ -232,7 +230,6 @@ lock_release (struct lock *lock) {
 
   release_donation (lock);
 
-  lock->holder_priority = 0;
   lock->holder = NULL;
   sema_up (&lock->semaphore);
 
@@ -254,38 +251,44 @@ donate_priority (struct lock *lock) {
     
     old_level = intr_disable ();
     
-    holder->priority = curr->priority;                   
-    list_insert_ordered(&holder->donations, &curr->d_elem, cmp_priority, NULL); //* insert donations list
+    holder->priority = curr->priority;                 
+    list_insert_ordered(&holder->donations, &curr->d_elem, cmp_priority_donation, NULL); //* insert donations list
     
     intr_set_level (old_level);
   }
 }
 
-//! 우선순위 변경
 void
 release_donation (struct lock *lock) {
-  enum intr_level old_level;
   struct list *wl = &(lock->semaphore).waiters;
   struct list *dl = &(lock->holder->donations);
-
-  if (list_empty (wl)) {
+  
+  if (lock->holder->priority == lock->holder->origin_priority)   //* 오리진이 바뀐 적 없으면 (doner가 없으면) return
     return;
-  }
 
-  list_sort (dl, cmp_priority_donation, NULL);
-  struct thread *waiter = list_entry (list_begin(wl), struct thread, elem);
-  struct thread *doner = list_entry (list_begin(dl), struct thread, d_elem);
+  if (!list_empty (wl)) {             //* sema -> waiter가 있음
+    list_sort (dl, cmp_priority_donation, NULL);
+    struct thread *waiter = list_entry (list_begin(wl), struct thread, elem);
+    struct list_elem *e = list_head (dl);
 
-  if (waiter == doner) {
-    list_remove(&doner->d_elem);
-    
-    if (list_empty(dl)) {
-      lock->holder->priority = lock->holder_priority;
-      return;
+    enum intr_level old_level;
+    old_level = intr_disable ();
+    while ((e = list_next (e)) != list_end (dl)) {
+      struct thread *doner = list_entry (e, struct thread, d_elem);
+      
+      if (lock == doner->wait_on_lock)
+        list_remove(&doner->d_elem);
+    }  
+
+    intr_set_level (old_level);
+    if (lock->holder->priority != list_entry (list_begin(dl), struct thread, d_elem)->priority) {
+      lock->holder->priority = list_entry (list_begin(dl), struct thread, d_elem)->priority;
     }
   }
 
-  lock->holder->priority = list_entry (list_begin(dl), struct thread, d_elem)->priority;
+  if (list_empty (dl)) {
+    lock->holder->priority = lock->holder->origin_priority;
+  }
 }
 
 /* Returns true if the current thread holds LOCK, false

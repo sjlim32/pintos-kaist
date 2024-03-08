@@ -92,6 +92,20 @@ static uint64_t gdt[3] = { 0, 0x00af9a000000ffff, 0x00cf92000000ffff };
    finishes. */
 
 //******************************************** 함수 ********************************************//
+void print_ready() {
+    enum intr_level old_level = intr_disable ();
+    struct list_elem *e;
+    struct thread *t;
+    printf("[DEBUG] PRINTING ALL READY THREADS\n");
+    for (e = list_begin(&ready_list); e != list_end(&ready_list); e = e->next) {
+        t = list_entry(e, struct thread, elem);
+        printf("thread#%d (%s) at %p, priority=%d\n", t->tid, t->name, e, t->priority);
+        // printf("thread#%d (%s) at %p\n", t->tid, t->name, e);
+    }
+    printf("tail at %p\n", list_end(&ready_list));
+    intr_set_level (old_level);
+}
+
 void
 thread_init (void) {
 	ASSERT (intr_get_level () == INTR_OFF);
@@ -221,8 +235,8 @@ thread_preemption (void) {
   struct thread *curr = thread_current ();
   struct thread *ready = list_entry (list_begin (&ready_list), struct thread, elem);
 
-  if (curr == idle_thread)
-    return;
+  // if (curr == idle_thread)
+  //   return;
 
 	ASSERT (!intr_context ());
   old_level = intr_disable ();
@@ -381,6 +395,7 @@ void
 thread_set_priority (int new_priority) {
 	struct thread *curr = thread_current ();
   curr->priority = new_priority;
+  curr->origin_priority = new_priority;
   thread_preemption ();
 }
 
@@ -506,6 +521,7 @@ init_thread (struct thread *t, const char *name, int priority) {
 	strlcpy (t->name, name, sizeof t->name);
 	t->tf.rsp = (uint64_t) t + PGSIZE - sizeof (void *);
 	t->priority = priority;
+  t->origin_priority = priority;
 	t->magic = THREAD_MAGIC;
 }
 
