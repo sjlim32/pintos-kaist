@@ -242,6 +242,7 @@ donate_priority (struct lock *lock) {
 
   struct thread *curr = thread_current ();
   struct thread *holder = lock->holder;
+
   if (holder != NULL) {
     curr->wait_on_lock = lock;
     
@@ -252,9 +253,19 @@ donate_priority (struct lock *lock) {
     
     holder->priority = curr->priority;                 
     list_insert_ordered(&holder->donations, &curr->d_elem, cmp_priority_donation, NULL); //* insert donations list
+    nest_donate (curr, lock, depth_max);        //* priority donate nestly
 
     intr_set_level (old_level);
   }
+}
+
+void 
+nest_donate (struct thread *curr, struct lock *lock, int depth) {
+  if (!lock->holder->wait_on_lock || depth == 0)
+    return;
+
+  lock->holder->wait_on_lock->holder->priority = curr->priority;
+  nest_donate (curr, lock, depth - 1);
 }
 
 void

@@ -97,7 +97,7 @@ struct thread {
 	struct list_elem elem;              /* List element. */
   int64_t waken_ticks;
 
-  struct lock *wait_on_lock;           //* 우선순위가 낮은 스레드와 체이닝 되어있는 lock
+  struct lock *wait_on_lock;           //* 내가 기다리고 있는 lock (nest 처리를 위해)
   struct list donations;               //* 기부자 리스트, 헤드는 우선순위가 가장 낮은 스레드. d_elem으로 이어져 있음
   struct list_elem d_elem;             //* 기부자 스레드 안에 삽입됨
 
