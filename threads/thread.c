@@ -129,7 +129,6 @@ thread_init (void) {
 	initial_thread = running_thread ();
 	init_thread (initial_thread, "main", PRI_DEFAULT);
 	initial_thread->status = THREAD_RUNNING;
-  list_init(&initial_thread->donations);
 	initial_thread->tid = allocate_tid ();
 }
 
@@ -523,6 +522,7 @@ init_thread (struct thread *t, const char *name, int priority) {
 	t->priority = priority;
   t->origin_priority = priority;
 	t->magic = THREAD_MAGIC;
+  list_init (&t->donations);
 }
 
 /* Chooses and returns the next thread to be scheduled.  Should
