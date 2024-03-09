@@ -265,7 +265,7 @@ nest_donate (struct thread *curr, struct lock *lock, int depth) {
     return;
 
   lock->holder->wait_on_lock->holder->priority = curr->priority;
-  nest_donate (curr, lock, depth - 1);
+  nest_donate (curr, lock->holder->wait_on_lock, depth - 1);
 }
 
 void
