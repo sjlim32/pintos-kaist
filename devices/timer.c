@@ -100,10 +100,6 @@ timer_sleep (int64_t ticks) {
 	// 	thread_yield ();                      //* yield = 양보, 즉 순서를 계속 양보함
 //*********** end ***********//
 
-//?  구현 방향성 : 스레드의 실행을 적어도 ticks 만큼 중단함
-//?  1. 시스템이 활동 상태인 경우, 굳이 ticks 이후에 바로 깨어날 필요 없음
-//?  2. 단지, 올바른 시간(right amount of time) 만큼 대기한 후, 준비 큐(ready queue)에 넣어주기만 하면 됨
-
   ASSERT (intr_get_level () == INTR_ON);
 
   struct thread *now_t = thread_current (); 
@@ -143,7 +139,22 @@ timer_interrupt (struct intr_frame *args UNUSED) {
 	ticks++;
 	thread_tick ();
 
-  thread_wakeup (ticks);      //* ticks 마다, 스레드를 확인하여 깨울 스레드가 존재하는 지 확인
+  //? 1초마다, load_avg 및 recent_cpu 재계산 (100틱 = 1초)
+  //? 4틱 마다, 모든 스레드의 priority 최신화
+  if (thread_mlfqs) {
+    if (thread_current ()->name != "idle")
+      thread_current ()->recent_cpu += 1;
+
+    if (timer_ticks () % TIMER_FREQ == 0) {
+      thread_get_load_avg ();                       //* 전역변수인 load_avg 갱신 필요
+      thread_calc_recent_cpu ();                    //* 모든 스레드의 recent_cpu 갱신 필요
+    }
+    
+    if (timer_ticks () % 4 == 0) {
+      thread_calc_priority ();                      //* 모든 스레드의 우선순위 갱신
+    }
+  }
+  thread_wakeup (ticks);                          // ticks 마다, 스레드를 확인하여 깨울 스레드가 존재하는 지 확인
 }
 
 /* Returns true if LOOPS iterations waits for more than one timer

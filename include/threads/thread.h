@@ -95,11 +95,15 @@ struct thread {
 
 	/* Shared between thread.c and synch.c. */
 	struct list_elem elem;              /* List element. */
+  struct list_elem a_elem;            //* MLFQS
   int64_t waken_ticks;
 
-  struct lock *wait_on_lock;           //* 내가 기다리고 있는 lock (nest 처리를 위해)
-  struct list donations;               //* 기부자 리스트, 헤드는 우선순위가 가장 낮은 스레드. d_elem으로 이어져 있음
-  struct list_elem d_elem;             //* 기부자 스레드 안에 삽입됨
+  struct lock *wait_on_lock;          //* 내가 기다리고 있는 lock (nest 처리를 위해)
+  struct list donations;              //* 기부자 리스트, 헤드는 우선순위가 가장 낮은 스레드. d_elem으로 이어져 있음
+  struct list_elem d_elem;            //* 기부자 스레드 안에 삽입됨
+
+  int recent_cpu;                     //* 내가 최근에 cpu를 점유한 틱
+  int nice;                           //* 내가 다른 스레드들에게 얼마나 CPU를 양보했는지 (상대 지수)
 
 #ifdef USERPROG
 	/* Owned by userprog/process.c. */
@@ -151,6 +155,8 @@ int thread_get_nice (void);
 void thread_set_nice (int);
 int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
+void thread_calc_priority (void);
+void thread_calc_recent_cpu (void);
 
 void do_iret (struct intr_frame *tf);
 

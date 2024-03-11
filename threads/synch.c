@@ -277,20 +277,14 @@ release_donation (struct lock *lock) {
     return;
 
   if (!list_empty (wl)) {             //* sema -> waiter가 있음
-    list_sort (dl, cmp_priority_donation, NULL);
-    struct thread *waiter = list_entry (list_begin(wl), struct thread, elem);
     struct list_elem *e = list_head (dl);
-
-    enum intr_level old_level;
-    old_level = intr_disable ();
     while ((e = list_next (e)) != list_end (dl)) {
       struct thread *doner = list_entry (e, struct thread, d_elem);
       
       if (lock == doner->wait_on_lock)
         list_remove(&doner->d_elem);
     }  
-
-    intr_set_level (old_level);
+    
     if (lock->holder->priority != list_entry (list_begin(dl), struct thread, d_elem)->priority) {
       lock->holder->priority = list_entry (list_begin(dl), struct thread, d_elem)->priority;
     }
