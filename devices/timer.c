@@ -132,29 +132,28 @@ void
 timer_print_stats (void) {
 	printf ("Timer: %"PRId64" ticks\n", timer_ticks ());
 }
+
 /* Timer interrupt handler. */
 //! 타이머 인터럽트 핸들러 : 스레드와 커널의 ticks를 매 틱마다 증가시킴
 static void
 timer_interrupt (struct intr_frame *args UNUSED) {
-	ticks++;
+  ticks++;
 	thread_tick ();
 
-  //? 1초마다, load_avg 및 recent_cpu 재계산 (100틱 = 1초)
-  //? 4틱 마다, 모든 스레드의 priority 최신화
   if (thread_mlfqs) {
-    if (thread_current ()->name != "idle")
-      thread_current ()->recent_cpu += 1;
+    if (strcmp(thread_current ()->name, "idle"))
+      thread_current ()->recent_cpu += (1<<14);
 
     if (timer_ticks () % TIMER_FREQ == 0) {
-      thread_get_load_avg ();                       //* 전역변수인 load_avg 갱신 필요
+      thread_calc_load_avg ();                      //* 전역변수인 load_avg 갱신 필요
       thread_calc_recent_cpu ();                    //* 모든 스레드의 recent_cpu 갱신 필요
     }
     
-    if (timer_ticks () % 4 == 0) {
+    if (timer_ticks () % 4 == 0)
       thread_calc_priority ();                      //* 모든 스레드의 우선순위 갱신
-    }
   }
-  thread_wakeup (ticks);                          // ticks 마다, 스레드를 확인하여 깨울 스레드가 존재하는 지 확인
+
+  thread_wakeup (ticks);                            // ticks 마다, 스레드를 확인하여 깨울 스레드가 존재하는 지 확인
 }
 
 /* Returns true if LOOPS iterations waits for more than one timer

@@ -193,7 +193,9 @@ lock_acquire (struct lock *lock) {
 	ASSERT (!intr_context ());
 	ASSERT (!lock_held_by_current_thread (lock));
 	
-  donate_priority (lock);
+  if (!thread_mlfqs)
+    donate_priority (lock);
+    
   sema_down (&lock->semaphore);
   lock->holder = thread_current ();
 }
@@ -227,8 +229,9 @@ void
 lock_release (struct lock *lock) {
 	ASSERT (lock != NULL);
 	ASSERT (lock_held_by_current_thread (lock));
-
-  release_donation (lock);
+  
+  if (!thread_mlfqs)
+    release_donation (lock);
 
   lock->holder = NULL;
   sema_up (&lock->semaphore);
@@ -246,14 +249,14 @@ donate_priority (struct lock *lock) {
   if (holder != NULL) {
     curr->wait_on_lock = lock;
     
-    if (curr->priority <= holder->priority)                            //* priority donate
+    if (curr->priority <= holder->priority)                        //* priority donate
       return
     
     old_level = intr_disable ();
     
     holder->priority = curr->priority;                 
-    list_insert_ordered(&holder->donations, &curr->d_elem, cmp_priority_donation, NULL); //* insert donations list
-    nest_donate (curr, lock, depth_max);        //* priority donate nestly
+    list_insert_ordered(&holder->donations, &curr->d_elem, cmp_priority_donation, NULL); 
+    nest_donate (curr, lock, depth_max);                           //* priority donate nestly
 
     intr_set_level (old_level);
   }
@@ -276,7 +279,7 @@ release_donation (struct lock *lock) {
   if (lock->holder->priority == lock->holder->origin_priority)   //* 오리진이 바뀐 적 없으면 (doner가 없으면) return
     return;
 
-  if (!list_empty (wl)) {             //* sema -> waiter가 있음
+  if (!list_empty (wl)) {                                        //* sema -> waiter가 있음
     struct list_elem *e = list_head (dl);
     while ((e = list_next (e)) != list_end (dl)) {
       struct thread *doner = list_entry (e, struct thread, d_elem);
