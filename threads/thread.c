@@ -249,10 +249,12 @@ thread_preemption (void) {
   struct thread *curr = thread_current ();
   struct thread *ready = list_entry (list_begin (&ready_list), struct thread, elem);
 
-	ASSERT (!intr_context ());
+  if (list_empty(&ready_list))
+    return;
+
   old_level = intr_disable ();
 
-  if (curr->priority < ready->priority) {
+  if (!intr_context() && curr->priority < ready->priority) {
     thread_yield ();
   }
 

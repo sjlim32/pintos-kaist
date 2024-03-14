@@ -22,10 +22,13 @@
 #include "vm/vm.h"
 #endif
 
+#define ARG_MAX 128                           //* strtok_r로 잘라줄 최대값
+
 static void process_cleanup (void);
 static bool load (const char *file_name, struct intr_frame *if_);
 static void initd (void *f_name);
 static void __do_fork (void *);
+static void args_parssing (const char *f_name);
 
 /* General process initializer for initd and other process. */
 static void
@@ -173,16 +176,20 @@ process_exec (void *f_name) {
 	_if.cs = SEL_UCSEG;
 	_if.eflags = FLAG_IF | FLAG_MBS;
 
+  printf("==================== start \n");
+
 	/* We first kill the current context */
 	process_cleanup ();
-
 	/* And then load the binary */
 	success = load (file_name, &_if);
-
+  printf("==================== %d \n", success);
+  
 	/* If load failed, quit. */
 	palloc_free_page (file_name);
 	if (!success)
 		return -1;
+
+  // hex_dump(_if.rsp, _if.rsp, KERN_BASE - _if.rsp, true);
 
 	/* Start switched process. */
 	do_iret (&_if);
@@ -204,6 +211,7 @@ process_wait (tid_t child_tid UNUSED) {
 	/* XXX: Hint) The pintos exit if process_wait (initd), we recommend you
 	 * XXX:       to add infinite loop here before
 	 * XXX:       implementing the process_wait. */
+  timer_sleep(1);
 	return -1;
 }
 
@@ -334,6 +342,8 @@ load (const char *file_name, struct intr_frame *if_) {
 	if (t->pml4 == NULL)
 		goto done;
 	process_activate (thread_current ());
+
+  args_parssing (file_name);
 
 	/* Open executable file. */
 	file = filesys_open (file_name);
@@ -569,6 +579,34 @@ install_page (void *upage, void *kpage, bool writable) {
 	return (pml4_get_page (t->pml4, upage) == NULL
 			&& pml4_set_page (t->pml4, upage, kpage, writable));
 }
+
+//! load에서 filename과 함께 받아온 args를 파싱하는 작업 (스택에 쌓기 위해)
+static void
+args_parssing (const char *file_name) {
+  char *token, *save_ptr;
+  char *args[ARG_MAX];
+  int idx = 0;
+
+  for (token = strtok_r (file_name, " ", &save_ptr); token != NULL;) {
+    memcpy(args[idx], token, strlen(token)+1);
+    token = strtok_r (NULL, " ", &save_ptr);
+    idx++;
+  }
+
+  memset(args[idx+1], 0, sizeof(char *));        //* 명령어의 종료을 알리기 위함
+
+  //? 슬라이싱해서 args에 넣은 명령어와 파일 이름의 포인터를 배열 ARGV에 넣는 작업
+  char *argv[idx];
+  // memset(argv[idx], 0, sizeof(char *))
+  
+  argv[idx] = NULL;
+  for (int i = idx - 1; i > -1; i--) {
+    memcpy(argv[i], &args[i], sizeof(char *));
+  }
+
+  // return address는 어디에 저장 ?
+}
+
 #else
 /* From here, codes will be used after project 3.
  * If you want to implement the function for only project 2, implement it on the
