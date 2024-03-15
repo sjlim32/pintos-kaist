@@ -22,6 +22,8 @@
 #include "vm/vm.h"
 #endif
 
+#define ARG_MAX 128                           //* strtok_r로 잘라줄 최대값
+
 static void process_cleanup (void);
 static bool load (const char *file_name, struct intr_frame *if_);
 static void initd (void *f_name);
@@ -176,19 +178,75 @@ process_exec (void *f_name) {
 	/* We first kill the current context */
 	process_cleanup ();
 
+  /*
+  ? Project 2 - Argument Passing 
+  * 파일 이름에 빈 칸으로 분리되어 들어온 명령어들을 분리하고, User Stack으로 쌓아놓는 파일 실행 준비과정
+  */
+  char *token, *save_ptr;
+  char *argv[32];
+  int idx = 0;
+
+  for (token = strtok_r (file_name, " ", &save_ptr); token != NULL; token= strtok_r(NULL, " ", &save_ptr)) {
+    argv[idx++] = token;                          //* f_name에서 실행할 파일과 명령어들을 분리
+  }
+
 	/* And then load the binary */
 	success = load (file_name, &_if);
+  
+  argument_passing (&_if, idx, argv);             //* 분리한 명령어들을 User Stack 쌓기 위한 함수
 
 	/* If load failed, quit. */
 	palloc_free_page (file_name);
 	if (!success)
 		return -1;
 
+  hex_dump(_if.rsp, (void *)_if.rsp, USER_STACK - (uint64_t)_if.rsp, true);    //* user_stack printer
+
 	/* Start switched process. */
 	do_iret (&_if);
 	NOT_REACHED ();
 }
 
+//! filename에서 분리한 argument들을 User Stack에 쌓기 위해 배열에 저장
+static void
+argument_passing (struct intr_frame *if_, int argv_cnt, char **argv_list) {
+  int64_t arg_addr[ARG_MAX];
+  int _ptr = sizeof(char *);
+  
+  /* Put command to User Stack */
+  for (int i = 0; i < argv_cnt; i++) {
+    int arg_len = strlen(argv_list[i]) + 1;
+    if_->rsp -= arg_len;
+
+    memcpy((void *)if_->rsp, argv_list[i], arg_len);
+    arg_addr[i] = if_->rsp;
+  }
+
+  /* SET word_align, 주소값 8의 배수로 맞춤 */
+  if (if_->rsp % _ptr) {
+    int padding = if_->rsp % _ptr;
+    if_->rsp -= padding;
+    memset((void *)if_->rsp, 0, padding);
+  }
+
+  /* Put Command-End to User Stack, file_name 변수의 Null 삽입 */
+  if_->rsp -= _ptr;
+  memset((void *)if_->rsp, 0, _ptr);
+
+  /* Put cmd_address to User Stack */
+  for (int i = argv_cnt - 1; i >= 0; i--) {
+    if_->rsp -= _ptr;
+    memcpy((void *)if_->rsp, &arg_addr[i], _ptr);
+  }
+
+  /* SET return address, 반환 주소 삽입 */
+  if_->rsp -= _ptr;
+  memset((void *)if_->rsp, 0, _ptr);
+
+  /* rdi = nums of argument, rsi = start addr, 인자의 숫자와 시작 주소 반환 */
+  if_->R.rdi = argv_cnt;
+  if_->R.rsi = if_->rsp + _ptr;
+}
 
 /* Waits for thread TID to die and returns its exit status.  If
  * it was terminated by the kernel (i.e. killed due to an
@@ -204,6 +262,8 @@ process_wait (tid_t child_tid UNUSED) {
 	/* XXX: Hint) The pintos exit if process_wait (initd), we recommend you
 	 * XXX:       to add infinite loop here before
 	 * XXX:       implementing the process_wait. */
+  // for (;;)
+  for (int i = 0; 1 < 100; i++){}
 	return -1;
 }
 
