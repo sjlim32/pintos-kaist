@@ -53,8 +53,12 @@ process_create_initd (const char *file_name) {
 		return TID_ERROR;
 	strlcpy (fn_copy, file_name, PGSIZE);
 
+  /* Project 2 - Syscall */
+  char *save_ptr;
+  char *f_name = strtok_r ((char *)file_name, " ", &save_ptr);
+
 	/* Create a new thread to execute FILE_NAME. */
-	tid = thread_create (file_name, PRI_DEFAULT, initd, fn_copy);
+	tid = thread_create (f_name, PRI_DEFAULT, initd, fn_copy);
 	if (tid == TID_ERROR)
 		palloc_free_page (fn_copy);
 	return tid;
@@ -201,7 +205,7 @@ process_exec (void *f_name) {
 	if (!success)
 		return -1;
 
-  hex_dump(_if.rsp, (void *)_if.rsp, USER_STACK - (uint64_t)_if.rsp, true);    //* user_stack printer
+  // hex_dump(_if.rsp, (void *)_if.rsp, USER_STACK - (uint64_t)_if.rsp, true);    //* user_stack printer
 
 	/* Start switched process. */
 	do_iret (&_if);
@@ -264,7 +268,7 @@ process_wait (tid_t child_tid UNUSED) {
 	 * XXX:       to add infinite loop here before
 	 * XXX:       implementing the process_wait. */
   // for (;;)
-  for (int i = 0; 1 < 100; i++){}
+  timer_sleep(10);
 	return -1;
 }
 
@@ -276,6 +280,8 @@ process_exit (void) {
 	 * TODO: Implement process termination message (see
 	 * TODO: project2/process_termination.html).
 	 * TODO: We recommend you to implement process resource cleanup here. */
+  
+  printf ("%s: exit(%d)\n", thread_name(), curr->exit_status);
 
 	process_cleanup ();
 }

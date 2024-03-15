@@ -89,6 +89,7 @@ struct thread {
 	/* Owned by thread.c. */
 	tid_t tid;                          /* Thread identifier. */
 	enum thread_status status;          /* Thread state. */
+  int exit_status;                    //* Project 2 - USERPROG_EXIT 변수
 	char name[16];                      /* Name (for debugging purposes). */
 	int priority;                       /* Priority. */
   int origin_priority;                //* 본래 priority
