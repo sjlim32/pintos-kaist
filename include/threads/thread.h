@@ -88,10 +88,9 @@ typedef int tid_t;
 struct thread {
 	/* Owned by thread.c. */
 	tid_t tid;                          /* Thread identifier. */
-	enum thread_status status;          /* Thread state. */
-  int exit_status;                    //* Project 2 - USERPROG_EXIT 변수
-	char name[16];                      /* Name (for debugging purposes). */
-	int priority;                       /* Priority. */
+  enum thread_status status;          /* Thread state. */
+  char name[16];                      /* Name (for debugging purposes). */
+  int priority;                       /* Priority. */
   int origin_priority;                //* 본래 priority
 
 	/* Shared between thread.c and synch.c. */
@@ -109,10 +108,11 @@ struct thread {
 #ifdef USERPROG
 	/* Owned by userprog/process.c. */
 	uint64_t *pml4;                     /* Page map level 4 */
+  int exit_status;                    //* Project 2 - USERPROG_EXIT 변수
 #endif
 #ifdef VM
-	/* Table for whole virtual memory owned by thread. */
-	struct supplemental_page_table spt;
+  /* Table for whole virtual memory owned by thread. */
+  struct supplemental_page_table spt;
 #endif
 
 	/* Owned by thread.c. */

@@ -10,6 +10,7 @@
 
 void syscall_entry (void);
 void syscall_handler (struct intr_frame *);
+bool create (const char* file, unsigned initial_size);
 
 /* System call.
  *
@@ -37,26 +38,6 @@ syscall_init (void) {
 			FLAG_IF | FLAG_TF | FLAG_DF | FLAG_IOPL | FLAG_AC | FLAG_NT);
 }
 
-/*
-struct gp_registers {
-	uint64_t r15;
-	uint64_t r14;
-	uint64_t r13;
-	uint64_t r12;
-	uint64_t r11;
-	uint64_t r10;   can use 4
-	uint64_t r9;    can use 5
-	uint64_t r8;    can use 6
-	uint64_t rsi;   can use 2
-	uint64_t rdi;   can use 1
-	uint64_t rbp;
-	uint64_t rdx;   can use 3
-	uint64_t rcx;
-	uint64_t rbx;
-	uint64_t rax;
-} __attribute__((packed));
-*/
-
 /* The main system call interface */
 //! Project 2 - System calls
 void
@@ -67,9 +48,16 @@ syscall_handler (struct intr_frame *f UNUSED) {
   // thread_exit ();
 
   //? 시스템콜 호출 번호 - %rax
-  //? 인자 - %rdi, $rsi, %rdx, %r10, %r8, %r9
+  //? 인자 - %rdi, $rsi, %rdx, %r10, %r9, %r8
+  // printf("######## DBG ######## rdi = { %s }\n", f->R.rdi);
+  // printf("######## DBG ######## rsi = { %s }\n", f->R.rsi);
+  // printf("######## DBG ######## rdi = { %s }\n", f->R.rdx);
+  // printf("######## DBG ######## r10 = { %s }\n", f->R.r10);
+  // printf("######## DBG ######## r9 = { %s }\n", f->R.r9);
+  // printf("######## DBG ######## r8 = { %s }\n", f->R.r8);
 
   int sys_number = f->R.rax;
+  bool result;
 
   switch (sys_number) {
 
@@ -95,9 +83,13 @@ syscall_handler (struct intr_frame *f UNUSED) {
       // syscall 4 처리
       break;
 
-    case SYS_CREATE:
-      printf("Performing syscall 5\n");
-      // syscall 5 처리
+    case SYS_CREATE: /* Create a file. */
+      result = create ((char*)f->R.rdi, f->R.rsi);
+      if (result)
+        f->R.rax = result;
+      else
+        f->R.rax = false;
+
       break;
 
     case SYS_REMOVE:
@@ -119,10 +111,12 @@ syscall_handler (struct intr_frame *f UNUSED) {
       // syscall 9 처리
       break;
 
-    case SYS_WRITE:
-      // printf("Performing syscall 10\n");
-      printf("%s", f->R.rsi);
-      // syscall 10 처리
+    case SYS_WRITE: /* Write to a file. */
+      //? int write (int fd, const void *buffer, unsigned size);
+      printf ("%s", (char*)f->R.rsi);
+      // printf("######## DBG ######## r10 = { %s }\n", f->R.r10);
+      // printf("######## DBG ######## r9 = { %s }\n", f->R.r9);
+      // printf("######## DBG ######## r8 = { %s }\n", f->R.r8);
       break;
 
     case SYS_SEEK:
@@ -149,19 +143,17 @@ syscall_handler (struct intr_frame *f UNUSED) {
 }
 
 /*
-	SYS_EXEC,                    3 Switch current process.
-	SYS_WAIT,                    4 Wait for a child process to die.
-	SYS_CREATE,                  5 Create a file.
-	SYS_REMOVE,                  6 Delete a file.
-	SYS_OPEN,                    7 Open a file.
-	SYS_FILESIZE,                8 Obtain a file's size.
-	SYS_READ,                    9  Read from a file.
-	SYS_WRITE,                   10 Write to a file.
-	SYS_SEEK,                    11 Change position in a file.
-	SYS_TELL,                    12 Report current position in a file.
-	SYS_CLOSE,                   13 Close a file.
-};
+  TODO: SYS_EXEC,                    3 Switch current process.
+  TODO: SYS_WAIT,                    4 Wait for a child process to die.
+  TODO: SYS_REMOVE,                  6 Delete a file.
+  TODO: SYS_OPEN,                    7 Open a file.
+  TODO: SYS_FILESIZE,                8 Obtain a file's size.
+  TODO: SYS_READ,                    9  Read from a file.
+  TODO: SYS_SEEK,                    11 Change position in a file.
+  TODO: SYS_TELL,                    12 Report current position in a file.
+  TODO: SYS_CLOSE,                   13 Close a file.
 */
+
 void 
 halt (void) {
 
@@ -195,7 +187,12 @@ fork(const char *thread_name) {
 
 // int exec (const char *file);
 // int wait (pid_t);
-// bool create (const char *file, unsigned initial_size);
+bool
+create (const char* file, unsigned initial_size) {
+  bool result = filesys_create (file, initial_size);
+  return result;
+}
+
 // bool remove (const char *file);
 // int open (const char *file);
 // int filesize (int fd);
@@ -204,3 +201,10 @@ fork(const char *thread_name) {
 // void seek (int fd, unsigned position);
 // unsigned tell (int fd);
 // void close (int fd);
+
+// printf("######## DBG ######## rdi = { %s }\n", f->R.rdi);
+// printf("######## DBG ######## rsi = { %s }\n", f->R.rsi);
+// printf("######## DBG ######## rdi = { %s }\n", f->R.rdx);
+// printf("######## DBG ######## r10 = { %s }\n", f->R.r10);
+// printf("######## DBG ######## r9 = { %s }\n", f->R.r9);
+// printf("######## DBG ######## r8 = { %s }\n", f->R.r8);
