@@ -28,7 +28,7 @@ typedef int tid_t;
 #define PRI_DEFAULT 31                  /* Default priority. */
 #define PRI_MAX 63                      /* Highest priority. */
 
-/* --- Project 2 - System call --- */
+/* --- Project 2 : System call --- */
 #define FDT_PAGES 3
 #define FD_COUNT_LIMIT FDT_PAGES *(1<<9)
 
@@ -113,11 +113,12 @@ struct thread {
 	/* Owned by userprog/process.c. */
 	uint64_t *pml4;                     /* Page map level 4 */
 
-  /* --- Project 2 - System call --- */
+  /* --- Project 2 : System call --- */
   int exit_status;                    //* EXIT
 
   struct file **fd_table;             //* OPEN
   int fd_idx;                         //* OPEN
+  int runn_file;                      //* OPEN
 #endif
 #ifdef VM
   /* Table for whole virtual memory owned by thread. */

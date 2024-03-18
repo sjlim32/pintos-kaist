@@ -223,7 +223,7 @@ thread_create (const char *name, int priority,
   }
 
 #ifdef USERPROG
-  /* --- Project 2 - System call --- */
+  /* --- Project 2 : System call --- */
   t->fd_table = palloc_get_multiple(PAL_ZERO, FDT_PAGES);
   if (t->fd_table == NULL) {
     return TID_ERROR;
