@@ -221,7 +221,18 @@ thread_create (const char *name, int priority,
     t->nice = thread_current ()->nice;                      //* MLFQS
     t->recent_cpu = thread_current ()->recent_cpu;          //* MLFQS
   }
-  
+
+#ifdef USERPROG
+  /* --- Project 2 - System call --- */
+  t->fd_table = palloc_get_multiple(PAL_ZERO, FDT_PAGES);
+  if (t->fd_table == NULL) {
+    return TID_ERROR;
+  }
+  t->fd_idx = 2;
+  t->fd_table[0] = STDIN_FILENO; // stdin 자리: 1 배정
+  t->fd_table[1] = STDOUT_FILENO; // stdout 자리: 2 배정
+#endif
+
 	/* Call the kernel_thread if it scheduled.
 	 * Note) rdi is 1st argument, and rsi is 2nd argument. */
 	t->tf.rip = (uintptr_t) kernel_thread;

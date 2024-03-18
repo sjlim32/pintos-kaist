@@ -7,10 +7,23 @@
 #include "userprog/gdt.h"
 #include "threads/flags.h"
 #include "intrinsic.h"
+/* ------ Project 2 ------ */
+#include "lib/user/syscall.h"
+#include "filesys/filesys.h"
+#include "userprog/process.h"
+// #include "filesys/file.h"
+// #include "threads/vaddr.h"
+// #include "kernel/stdio.h"
+// #include "threads/palloc.h"
+/* ------------------------ */
+
 
 void syscall_entry (void);
 void syscall_handler (struct intr_frame *);
-bool create (const char* file, unsigned initial_size);
+
+/* ------ Project 2 ------ */
+void check_addr(const char *f_addr);
+
 
 /* System call.
  *
@@ -42,11 +55,6 @@ syscall_init (void) {
 //! Project 2 - System calls
 void
 syscall_handler (struct intr_frame *f UNUSED) {
-	// TODO: Your implementation goes here.
-
-  // printf ("system call!\n");
-  // thread_exit ();
-
   //? 시스템콜 호출 번호 - %rax
   //? 인자 - %rdi, $rsi, %rdx, %r10, %r9, %r8
   // printf("######## DBG ######## rdi = { %s }\n", f->R.rdi);
@@ -57,7 +65,6 @@ syscall_handler (struct intr_frame *f UNUSED) {
   // printf("######## DBG ######## r8 = { %s }\n", f->R.r8);
 
   int sys_number = f->R.rax;
-  bool result;
 
   switch (sys_number) {
 
@@ -70,7 +77,7 @@ syscall_handler (struct intr_frame *f UNUSED) {
       break;
 
     case SYS_FORK:          /* Clone current process. */
-      fork (f->R.rdi);
+      fork ((char *)f->R.rdi);
       break;
 
     case SYS_EXEC:
@@ -84,21 +91,15 @@ syscall_handler (struct intr_frame *f UNUSED) {
       break;
 
     case SYS_CREATE: /* Create a file. */
-      result = create ((char*)f->R.rdi, f->R.rsi);
-      if (result)
-        f->R.rax = result;
-      else
-        f->R.rax = false;
-
+      f->R.rax = create((char *)f->R.rdi, f->R.rsi);
       break;
 
     case SYS_REMOVE:
       printf("Performing syscall 6\n");
       // syscall 6 처리
       break;
-    case SYS_OPEN:
-      printf("Performing syscall 7\n");
-      // syscall 7 처리
+    case SYS_OPEN: /* Open a file. */
+      f->R.rax = open((char *)f->R.rdi);
       break;
 
     case SYS_FILESIZE:
@@ -146,7 +147,6 @@ syscall_handler (struct intr_frame *f UNUSED) {
   TODO: SYS_EXEC,                    3 Switch current process.
   TODO: SYS_WAIT,                    4 Wait for a child process to die.
   TODO: SYS_REMOVE,                  6 Delete a file.
-  TODO: SYS_OPEN,                    7 Open a file.
   TODO: SYS_FILESIZE,                8 Obtain a file's size.
   TODO: SYS_READ,                    9  Read from a file.
   TODO: SYS_SEEK,                    11 Change position in a file.
@@ -168,7 +168,7 @@ exit (int status) {
   thread_exit ();
 }
 
-tid_t 
+pid_t
 fork(const char *thread_name) {
   /* 
     %RBX, %RSP, %RBP와 %R12 - %R15 레지스터 복제해야 함
@@ -189,22 +189,42 @@ fork(const char *thread_name) {
 // int wait (pid_t);
 bool
 create (const char* file, unsigned initial_size) {
-  bool result = filesys_create (file, initial_size);
-  return result;
+  check_addr(file);
+  return filesys_create(file, initial_size);
+}
+
+int
+open(const char *file) {
+  check_addr(file);
+  struct file *f = filesys_open(file);
+  if (f == NULL)
+    return -1;
+
+  struct thread *t = thread_current();
+  struct file **fdt = t->fd_table;
+
+  while (t->fd_idx < FD_COUNT_LIMIT && fdt[t->fd_idx])
+    ++t->fd_idx;
+
+  if (t->fd_idx >= FD_COUNT_LIMIT) {
+    return -1;
+    // file_close (f);
+  }
+  fdt[t->fd_idx] = f;
+
+  return t->fd_idx;
+}
+
+void
+check_addr(const char *f_addr) {
+  if (!is_user_vaddr(f_addr) || f_addr == NULL || !pml4_get_page(thread_current()->pml4, f_addr))
+    exit(-1);
 }
 
 // bool remove (const char *file);
-// int open (const char *file);
 // int filesize (int fd);
 // int read (int fd, void *buffer, unsigned length);
 // int write (int fd, const void *buffer, unsigned length);
 // void seek (int fd, unsigned position);
 // unsigned tell (int fd);
 // void close (int fd);
-
-// printf("######## DBG ######## rdi = { %s }\n", f->R.rdi);
-// printf("######## DBG ######## rsi = { %s }\n", f->R.rsi);
-// printf("######## DBG ######## rdi = { %s }\n", f->R.rdx);
-// printf("######## DBG ######## r10 = { %s }\n", f->R.r10);
-// printf("######## DBG ######## r9 = { %s }\n", f->R.r9);
-// printf("######## DBG ######## r8 = { %s }\n", f->R.r8);
