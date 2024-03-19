@@ -5,6 +5,7 @@
 #include <list.h>
 #include <stdint.h>
 #include "threads/interrupt.h"
+#include "threads/synch.h"
 #ifdef VM
 #include "vm/vm.h"
 #endif
@@ -115,10 +116,19 @@ struct thread {
 
   /* --- Project 2 : System call --- */
   int exit_status;                    //* EXIT
+  struct file *runn_file;             //* EXIT
 
   struct file **fd_table;             //* OPEN
   int fd_idx;                         //* OPEN
-  int runn_file;                      //* OPEN
+
+  struct intr_frame parent_if;        //* FORK
+
+  struct list child_list;             //* FORK
+  struct list_elem c_elem;            //* FORK
+
+  struct semaphore load_sema;         //* WAIT
+  struct semaphore wait_sema;         //* WAIT
+  struct semaphore exit_sema;         //* WAIT
 #endif
 #ifdef VM
   /* Table for whole virtual memory owned by thread. */

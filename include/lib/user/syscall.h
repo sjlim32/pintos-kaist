@@ -4,8 +4,6 @@
 #include <stdbool.h>
 #include <debug.h>
 #include <stddef.h>
-/* --- Project 2 : System call --- */
-#include "threads/synch.h"
 
 /* Process identifier. */
 typedef int pid_t;
@@ -21,8 +19,6 @@ typedef int off_t;
 /* Typical return values from main() and arguments to exit(). */
 #define EXIT_SUCCESS 0          /* Successful execution. */
 #define EXIT_FAILURE 1          /* Unsuccessful execution. */
-
-struct lock filesys_lock;
 
 /* Projects 2 and later. */
 void halt (void) NO_RETURN;

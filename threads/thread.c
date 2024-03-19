@@ -215,22 +215,25 @@ thread_create (const char *name, int priority,
 
 	/* Initialize thread. */
 	init_thread (t, name, priority);
-	tid = t->tid = allocate_tid ();
 
-  if (t != idle_thread) {
-    t->nice = thread_current ()->nice;                      //* MLFQS
-    t->recent_cpu = thread_current ()->recent_cpu;          //* MLFQS
+  tid = t->tid = allocate_tid ();
+  if (t != idle_thread) {                                   //* MLFQS
+    t->nice = thread_current ()->nice;
+    t->recent_cpu = thread_current ()->recent_cpu;
+    list_push_back(&all_list, &t->a_elem);
   }
 
 #ifdef USERPROG
   /* --- Project 2 : System call --- */
-  t->fd_table = palloc_get_multiple(PAL_ZERO, FDT_PAGES);
-  if (t->fd_table == NULL) {
+  list_push_back(&thread_current ()->child_list, &t->c_elem);          //* FORK
+
+  t->fd_table = palloc_get_multiple(PAL_ZERO, FDT_PAGES);   //* FD
+  if (t->fd_table == NULL)
     return TID_ERROR;
-  }
-  t->fd_idx = 2;
-  t->fd_table[0] = STDIN_FILENO; // stdin 자리: 1 배정
-  t->fd_table[1] = STDOUT_FILENO; // stdout 자리: 2 배정
+
+  t->fd_idx = 2;                                            //* FD
+  t->fd_table[0] = STDIN_FILENO;                            //* FD : stdin 배정 = 1
+  t->fd_table[1] = STDOUT_FILENO;                           //* FD : stdout 배정 = 2
 #endif
 
 	/* Call the kernel_thread if it scheduled.
@@ -610,7 +613,13 @@ init_thread (struct thread *t, const char *name, int priority) {
   list_init (&t->donations);
   t->recent_cpu = 0;                                        //* MLFQS
   t->nice = 0;                                              //* MLFQS
-  list_push_back(&all_list, &t->a_elem);                    //* MLFQS
+
+#ifdef USERPROG
+  list_init (&t->child_list);
+  sema_init(&t->wait_sema, 0);
+  sema_init(&t->load_sema, 0);
+  sema_init(&t->exit_sema, 0);
+#endif
 }
 
 /* Chooses and returns the next thread to be scheduled.  Should
