@@ -180,7 +180,7 @@ __do_fork (void *aux) {
 		goto error;
 #endif
   /* --- Project 2 - System call --- */
-  if (parent->fd_idx == FD_COUNT_LIMIT)
+  if (parent->fd_idx >= FD_COUNT_LIMIT)
     goto error;
 
   for (int i = 0; i < FD_COUNT_LIMIT; i++) {
@@ -195,16 +195,19 @@ __do_fork (void *aux) {
   curr->fd_idx = parent->fd_idx;
   sema_up(&curr->load_sema);
   /* ------------------------------- */
+
 	process_init ();
 
 	/* Finally, switch to the newly created process. */
 	if (succ)
 		do_iret (&if_);
+
 error:
   /* --- Project 2 - System call --- */
   curr->exit_status = TID_ERROR;
   sema_up(&curr->load_sema);
   /* ------------------------------- */
+
   process_exit ();
 }
 
@@ -306,7 +309,7 @@ argument_passing (struct intr_frame *if_, int argv_cnt, char **argv_list) {
 int
 process_wait (tid_t child_tid UNUSED) {
   struct thread *child = get_child(child_tid);
-  if (child == NULL)
+  if (child == NULL || child_tid < 0)
     return -1;
 
   sema_down (&child->wait_sema);
@@ -320,13 +323,12 @@ process_wait (tid_t child_tid UNUSED) {
 void
 process_exit (void) {
   struct thread *curr = thread_current ();
-  if (strcmp(curr->name, "main"))
-    printf ("%s: exit(%d)\n", thread_name(), curr->exit_status);
-  // printf (" ############ exit who = { %s }\n", thread_name());
 
-  for (int fd = curr->fd_idx; fd > 1; fd--)
+  for (int fd = 0; fd < FD_COUNT_LIMIT; fd++) {
     close(fd);
-  palloc_free_page (curr->fd_table);
+  }
+
+  palloc_free_page(curr->fd_table);
   file_close(curr->runn_file);
 
 	process_cleanup ();
