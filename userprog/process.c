@@ -89,9 +89,6 @@ initd (void *f_name) {
  * TID_ERROR if the thread cannot be created. */
 tid_t
 process_fork (const char *name, struct intr_frame *if_ UNUSED) {
-  // return thread_create (name,
-  // 		PRI_DEFAULT, __do_fork, thread_current ());  
-
   struct thread *curr = thread_current ();
   memcpy (&curr->parent_if, if_, sizeof(struct intr_frame));
 
@@ -146,8 +143,6 @@ duplicate_pte (uint64_t *pte, void *va, void *aux) {
 	/* 5. Add new page to child's page table at address VA with WRITABLE
 	 *    permission. */
   if (!pml4_set_page (curr->pml4, va, newpage, writable)) {
-		/* 6. TODO: if fail to insert page, do error handling. */
-    // palloc_free_page(newpage);
     return false;
 	}
 	return true;
@@ -184,11 +179,11 @@ __do_fork (void *aux) {
 	if (!pml4_for_each (parent->pml4, duplicate_pte, parent))
 		goto error;
 #endif
-
-  if (parent->fd_idx == FD_COUNT_LIMIT)                   //* syscall : FORK
+  /* --- Project 2 - System call --- */
+  if (parent->fd_idx == FD_COUNT_LIMIT)
     goto error;
 
-  for (int i = 0; i < FD_COUNT_LIMIT; i++) {              //* syscall : FORK
+  for (int i = 0; i < FD_COUNT_LIMIT; i++) {
     struct file *f = parent->fd_table[i];
     if (f == NULL)
       continue;
@@ -197,16 +192,19 @@ __do_fork (void *aux) {
       f = file_duplicate(f);
     curr->fd_table[i] = f;
   }
-  curr->fd_idx = parent->fd_idx;                          //* syscall : FORK
-  sema_up(&curr->load_sema);                              //* syscall : FORK
+  curr->fd_idx = parent->fd_idx;
+  sema_up(&curr->load_sema);
+  /* ------------------------------- */
 	process_init ();
 
 	/* Finally, switch to the newly created process. */
 	if (succ)
 		do_iret (&if_);
 error:
-  curr->exit_status = TID_ERROR;                          //* syscall : FORK
+  /* --- Project 2 - System call --- */
+  curr->exit_status = TID_ERROR;
   sema_up(&curr->load_sema);
+  /* ------------------------------- */
   process_exit ();
 }
 
@@ -307,18 +305,6 @@ argument_passing (struct intr_frame *if_, int argv_cnt, char **argv_list) {
  * does nothing. */
 int
 process_wait (tid_t child_tid UNUSED) {
-  // timer_sleep(10);
-  // return -1;
-
-  /* Wait
-  ? -1을 반환하는 경우
-  TODO 커널에 의해 종료된 경우(exception)
-  TODO tid가 유효하지 않거나
-  TODO 호출 프로세스의 자식이 아니거나
-  TODO tid에 대한 process_wait이 정상적으로 호출된 경우
-  ? 그 외에는 자식의 종료 상태 (exit_status)를 반환
-  */
-
   struct thread *child = get_child(child_tid);
   if (child == NULL)
     return -1;
@@ -334,8 +320,9 @@ process_wait (tid_t child_tid UNUSED) {
 void
 process_exit (void) {
   struct thread *curr = thread_current ();
-  printf ("%s: exit(%d)\n", thread_name(), curr->exit_status);
-
+  if (strcmp(curr->name, "main"))
+    printf ("%s: exit(%d)\n", thread_name(), curr->exit_status);
+  // printf (" ############ exit who = { %s }\n", thread_name());
 
   for (int fd = curr->fd_idx; fd > 1; fd--)
     close(fd);
@@ -543,15 +530,16 @@ load (const char *file_name, struct intr_frame *if_) {
 	/* Start address. */
 	if_->rip = ehdr.e_entry;
 
-	/* TODO: Your code goes here.
-	 * TODO: Implement argument passing (see project2/argument_passing.html). */
-
 	success = true;
 
 done:
-	/* We arrive here whether the load is successful or not. */
+  /* --- Project 2 - System call --- */
+  if (file == NULL)
+    exit(-1);
+
   t->runn_file = file;
   file_deny_write (file);
+  /* ------------------------------- */
 	return success;
 }
 

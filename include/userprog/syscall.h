@@ -21,10 +21,12 @@ typedef int off_t;
 #define EXIT_SUCCESS 0          /* Successful execution. */
 #define EXIT_FAILURE 1          /* Unsuccessful execution. */
 
-void syscall_init (void);
+struct lock filesys_lock;
+
+static void check_addr(const char *f_addr);
 
 static void halt (void) NO_RETURN;
-static void exit (int status) NO_RETURN;
+void exit (int status) NO_RETURN;
 static pid_t fork (const char *thread_name, struct intr_frame *);
 static int exec (const char *file);
 static int wait (pid_t);

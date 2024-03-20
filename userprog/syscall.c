@@ -16,16 +16,11 @@
 #include "threads/synch.h"
 #include "threads/init.h"
 #include "threads/palloc.h"
-// #include "threads/vaddr.h"
+#include "threads/vaddr.h"
 /* ------------------------ */
 
 void syscall_entry (void);
 void syscall_handler (struct intr_frame *);
-
-/* ------ Project 2 ------ */
-struct lock filesys_lock;
-
-static void check_addr(const char *f_addr);
 
 /* System call.
  *
@@ -60,45 +55,38 @@ syscall_init (void) {
 void
 syscall_handler (struct intr_frame *f UNUSED) {
   //? 시스템콜 호출 번호 - %rax
-  //? 인자 - %rdi, $rsi, %rdx, %r10, %r9, %r8
-  // printf("######## DBG ######## rdi = { %s }\n", f->R.rdi);
-  // printf("######## DBG ######## rsi = { %s }\n", f->R.rsi);
-  // printf("######## DBG ######## rdx = { %s }\n", f->R.rdx);
-  // printf("######## DBG ######## r10 = { %s }\n", f->R.r10);
-  // printf("######## DBG ######## r9 = { %s }\n", f->R.r9);
-  // printf("######## DBG ######## r8 = { %s }\n", f->R.r8);
+  //? 인자 - %rdi, $rsi, %rdx, %r10, %r8, %r9
 
   int sys_number = f->R.rax;
 
   switch (sys_number) {
 
     case SYS_HALT:          /* 0 Halt the operating system. */
-      halt ();
+      halt();
       break;
 
     case SYS_EXIT:          /* 1 Terminate this process. */
-      exit (f->R.rdi);
+      exit(f->R.rdi);
       break;
 
     case SYS_FORK:          /* 2 Clone current process. */
-      f->R.rax = fork ((char *)f->R.rdi, f);
+      f->R.rax = fork((char *)f->R.rdi, f);
       break;
 
     case SYS_EXEC:          /* 3 Switch current process. */
-      f->R.rax = exec ((char *)f->R.rdi);
+      f->R.rax = exec((char *)f->R.rdi);
       break;
 
     case SYS_WAIT:          /* 4 Wait for a child process to die. */
-      f->R.rax = wait (f->R.rdi);
+      f->R.rax = wait(f->R.rdi);
       break;
 
     case SYS_CREATE:        /* 5 Create a file. */
       f->R.rax = create((char *)f->R.rdi, f->R.rsi);
       break;
 
-    case SYS_REMOVE:
-      printf("Performing syscall 6\n");
-      // syscall 6 처리
+    case SYS_REMOVE:        /* 6 Delete a file. */
+      f->R.rax = remove((char *)f->R.rdi);
       break;
     case SYS_OPEN:          /* 7 Open a file. */
       f->R.rax = open((char *)f->R.rdi);
@@ -113,17 +101,15 @@ syscall_handler (struct intr_frame *f UNUSED) {
       break;
 
     case SYS_WRITE:         /* 10 Write to a file. */
-      f->R.rax = write (f->R.rdi, (void *)f->R.rsi, f->R.rdx);
+      f->R.rax = write(f->R.rdi, (void *)f->R.rsi, f->R.rdx);
       break;
 
-    case SYS_SEEK:
-      printf("Performing syscall 11\n");
-      // syscall 11 처리
+    case SYS_SEEK:          /* 11 Change position in a file. */
+      seek(f->R.rdi, f->R.rsi);
       break;
 
-    case SYS_TELL:
-      printf("Performing syscall 12\n");
-      // syscall 12 처리
+    case SYS_TELL:          /* 12 Report current position in a file. */
+      f->R.rax = tell(f->R.rdi);
       break;
 
     case SYS_CLOSE:         /* 13 Close a file. */
@@ -131,26 +117,18 @@ syscall_handler (struct intr_frame *f UNUSED) {
       break;
 
     default:
-      printf ("system call!\n");
+      printf("system call!\n");
       thread_exit ();
-      // printf("Unknown syscall number\n");
-      // break;
   }
 }
 
-/*
-  TODO: SYS_REMOVE,                  6 Delete a file.
-  TODO: SYS_SEEK,                    11 Change position in a file.
-  TODO: SYS_TELL,                    12 Report current position in a file.
-*/
-
+//! ------------------------ Project 2 : Systemcall ------------------------ *//
 static void
 halt (void) {
-
   power_off ();
 }
 
-static void
+void
 exit (int status) {
   struct thread *curr = thread_current ();
   curr->exit_status = status;
@@ -159,7 +137,7 @@ exit (int status) {
 }
 
 static pid_t
-fork(const char *thread_name, struct intr_frame *f) {
+fork (const char *thread_name, struct intr_frame *f) {
   return process_fork(thread_name, f);
 }
 
@@ -193,7 +171,7 @@ create (const char* file, unsigned initial_size) {
 }
 
 static int
-open(const char *file) {
+open (const char *file) {
   check_addr(file);
   struct file *f = filesys_open(file);
   if (f == NULL)
@@ -215,12 +193,17 @@ open(const char *file) {
 }
 
 static void
-check_addr(const char *f_addr) {
+check_addr (const char *f_addr) {
   if (!is_user_vaddr(f_addr) || f_addr == NULL || !pml4_get_page(thread_current()->pml4, f_addr))
     exit(-1);
 }
 
-// bool remove (const char *file);
+static bool
+remove (const char *file) {
+  check_addr(file);
+  return filesys_remove(file);
+}
+
 static int
 filesize (int fd) {
   int size = -1;
@@ -252,9 +235,9 @@ read (int fd, void *buffer, unsigned length) {
   if (f == NULL)
     return read_size;
 
-  lock_acquire (&filesys_lock);
+  lock_acquire(&filesys_lock);
   read_size = file_read(f, buffer, length);
-  lock_release (&filesys_lock);
+  lock_release(&filesys_lock);
 
   return read_size;
 }
@@ -268,7 +251,7 @@ write (int fd, const void *buffer, unsigned length) {
     return write_size;
 
   if (fd == 1) {
-    putbuf (buffer, length);
+    putbuf(buffer, length);
     return 0;
   }
   else {
@@ -278,15 +261,35 @@ write (int fd, const void *buffer, unsigned length) {
     if (f == NULL)
       return write_size;
 
-    lock_acquire (&filesys_lock);
+    lock_acquire(&filesys_lock);
     write_size = file_write(f, buffer, length);
-    lock_release (&filesys_lock);
+    lock_release(&filesys_lock);
   }
   return write_size;
 
 }
-// void seek (int fd, unsigned position);
-// unsigned tell (int fd);
+static void
+seek (int fd, unsigned position) {
+  struct thread *curr = thread_current ();
+  struct file *f = curr->fd_table[fd];
+
+  if (!is_kernel_vaddr(f))
+    exit(-1);
+
+  file_seek(f, position);
+}
+
+static unsigned
+tell (int fd) {
+  struct thread *curr = thread_current ();
+  struct file *f = curr->fd_table[fd];
+
+  if (!is_kernel_vaddr(f))
+    exit(-1);
+
+  return file_tell(f);
+}
+
 void
 close (int fd) {
   if (fd <= 1)
