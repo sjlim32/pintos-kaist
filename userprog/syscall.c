@@ -116,6 +116,10 @@ syscall_handler (struct intr_frame *f UNUSED) {
       close(f->R.rsi);
       break;
 
+    case SYS_DUP2:         /* 13 Close a file. */
+      f->R.rax = dup2(f->R.rdi, f->R.rsi);
+      break;
+
     default:
       printf("system call!\n");
       thread_exit ();
@@ -183,9 +187,10 @@ open (const char *file) {
   struct thread *curr = thread_current();
   struct file **fdt = curr->fd_table;
 
-  while (curr->fd_idx < FD_COUNT_LIMIT && fdt[curr->fd_idx])
+  while (curr->fd_idx < FD_COUNT_LIMIT && fdt[curr->fd_idx]) {
+    // printf(" ############### fd_idx = { %d }\n", curr->fd_idx);
     curr->fd_idx++;
-
+  }
   if (curr->fd_idx >= FD_COUNT_LIMIT) {
     file_close (f);
     return -1;
@@ -193,12 +198,6 @@ open (const char *file) {
   fdt[curr->fd_idx] = f;
 
   return curr->fd_idx;
-}
-
-static void
-check_addr (const char *f_addr) {
-  if (!is_user_vaddr(f_addr) || f_addr == NULL || !pml4_get_page(thread_current()->pml4, f_addr))
-    exit(-1);
 }
 
 static bool
@@ -209,37 +208,33 @@ remove (const char *file) {
 
 static int
 filesize (int fd) {
-  int size = -1;
-
   if (fd <= 1)
-    return size;
+    return -1;
 
   struct thread *curr = thread_current ();
   struct file *f = curr->fd_table[fd];
 
   if (f == NULL)
-    return size;
+    return -1;
 
-  size = file_length(f);
+  int size = file_length(f);
   return size;
 }
 
 static int
 read (int fd, void *buffer, unsigned length) {
-  int read_size = -1;
-
   check_addr(buffer);
   if (fd > FD_COUNT_LIMIT || fd == STDOUT_FILENO || fd < 0)
-    return read_size;
+    return -1;
 
   struct thread *curr = thread_current ();
   struct file *f = curr->fd_table[fd];
 
   if (f == NULL)
-    return read_size;
+    return -1;
 
   lock_acquire(&filesys_lock);
-  read_size = file_read(f, buffer, length);
+  int read_size = file_read(f, buffer, length);
   lock_release(&filesys_lock);
 
   return read_size;
@@ -295,9 +290,13 @@ tell (int fd) {
 
 void
 close (int fd) {
-  if (fd <= 1)
+  if (fd <= 1) {
+    if (fd > -1) {
+      // printf(" ############## closing STDIN & STDOUT ############# ");
+      thread_current ()->fd_table[fd] = NULL;
+    }
     return;
-
+  }
   struct thread *curr = thread_current ();
   struct file *f = curr->fd_table[fd];
 
@@ -306,4 +305,31 @@ close (int fd) {
 
   curr->fd_table[fd] = NULL;
   file_close(f);
+}
+
+static int
+dup2 (int oldfd, int newfd) {
+  // printf(" ############## Start DUP2 ############# ");
+  struct thread *curr = thread_current ();
+  struct file **fdt = curr->fd_table;
+  struct file *f = file_duplicate (curr->fd_table[oldfd]);
+
+  if (newfd > FD_COUNT_LIMIT || !is_kernel_vaddr(f) || f == NULL) {
+    // printf(" ############## Exception DUP2 ############# ");
+    return 1;
+  }
+  if (fdt[newfd] != NULL) {                   //* newfd 가 이전에 열려있다면, 재사용 되기 전에 닫힘
+
+    // printf(" ############## newfd{ %d } is Not Null \n ", newfd);
+    close(newfd);
+  }
+  fdt[newfd] = f;
+  // printf(" ############## Success DUP2 ############# ");
+  return newfd;
+}
+
+static void
+check_addr (const char *f_addr) {
+  if (!is_user_vaddr(f_addr) || f_addr == NULL || !pml4_get_page(thread_current()->pml4, f_addr))
+    exit(-1);
 }
