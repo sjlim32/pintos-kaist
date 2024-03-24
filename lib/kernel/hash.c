@@ -181,6 +181,7 @@ hash_apply (struct hash *h, hash_action_func *action) {
    functions hash_clear(), hash_destroy(), hash_insert(),
    hash_replace(), or hash_delete(), invalidates all
    iterators. */
+   //! hash find 한 뒤, hash_iterator 라는 구조체에 h의 마지막 사용 버킷 위치값을 기억
 void
 hash_first (struct hash_iterator *i, struct hash *h) {
 	ASSERT (i != NULL);
@@ -199,6 +200,7 @@ hash_first (struct hash_iterator *i, struct hash *h) {
    functions hash_clear(), hash_destroy(), hash_insert(),
    hash_replace(), or hash_delete(), invalidates all
    iterators. */
+   //! iterator의 위치값을 기준으로 h를 순회
 struct hash_elem *
 hash_next (struct hash_iterator *i) {
 	ASSERT (i != NULL);
@@ -240,6 +242,7 @@ hash_empty (struct hash *h) {
 #define FNV_64_BASIS 0xcbf29ce484222325UL
 
 /* Returns a hash of the SIZE bytes in BUF. */
+//! 바이트 기준으로 해싱
 uint64_t
 hash_bytes (const void *buf_, size_t size) {
 	/* Fowler-Noll-Vo 32-bit hash, for bytes. */
@@ -256,6 +259,7 @@ hash_bytes (const void *buf_, size_t size) {
 }
 
 /* Returns a hash of string S. */
+//! 스트링 기준으로 해싱
 uint64_t
 hash_string (const char *s_) {
 	const unsigned char *s = (const unsigned char *) s_;
@@ -271,6 +275,7 @@ hash_string (const char *s_) {
 }
 
 /* Returns a hash of integer I. */
+//! 해쉬 바이트 짭
 uint64_t
 hash_int (int i) {
 	return hash_bytes (&i, sizeof i);
