@@ -5,7 +5,8 @@
 
 struct file_info {
   struct file *file;
-  uint32_t read_bytes;
+  size_t read_bytes;
+  off_t ofs;
 };
 
 tid_t process_create_initd (const char *file_name);

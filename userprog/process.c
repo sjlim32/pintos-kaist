@@ -243,12 +243,12 @@ process_exec (void *f_name) {
 
 	/* And then load the binary */
   success = load (file_name, &_if);
+  if (!success)
+    return -1;
 
   argument_passing (&_if, idx, argv);             //* 분리한 명령어들을 User Stack에 쌓기 위한 함수
 	/* If load failed, quit. */
-	palloc_free_page (file_name);
-	if (!success)
-		return -1;
+  palloc_free_page (file_name);
 
   // hex_dump(_if.rsp, (void *)_if.rsp, USER_STACK - (uint64_t)_if.rsp, true);    //* user_stack printer
 
@@ -515,7 +515,7 @@ load (const char *file_name, struct intr_frame *if_) {
 						read_bytes = 0;
 						zero_bytes = ROUND_UP (page_offset + phdr.p_memsz, PGSIZE);
 					}
-					if (!load_segment (file, file_page, (void *) mem_page,
+          if (!load_segment (file, file_page, (void *)mem_page,
 								read_bytes, zero_bytes, writable))
 						goto done;
 				}
@@ -717,11 +717,12 @@ static bool
 lazy_load_segment (struct page *page, void *aux) {
   struct file_info *f_info = aux;
 
-  if (file_read (f_info->file, page, f_info->read_bytes) != (int)f_info->read_bytes) {
+  // printf(" ############### lazy_load_segment - f_info : [ file, read_bytes, ofs ] = { %p, %d, %d }\n", f_info->file, f_info->read_bytes, f_info->ofs);
+  file_seek(f_info->file, f_info->ofs);
+  if (file_read (f_info->file, (void *)page->frame->kva, f_info->read_bytes) != (int)f_info->read_bytes) {
     palloc_free_page (page);
     return false;
   }
-
   return true;
 }
 
@@ -752,14 +753,15 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 		 * and zero the final PAGE_ZERO_BYTES bytes. */
 		size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
 		size_t page_zero_bytes = PGSIZE - page_read_bytes;
+    struct file_info *f_info;
 
-    struct file_info *f_info = malloc(sizeof(struct file_info));
-    if (!f_info) {
+    if (!(f_info = (struct file_info *)malloc (sizeof(struct file_info)))) {
       return false;
     }
     f_info->file = file;
-    f_info->read_bytes = read_bytes;
-
+    f_info->read_bytes = page_read_bytes;
+    f_info->ofs = ofs;
+    // printf(" ############### load_segment - f_info :      [ file, read_bytes, ofs ] = { %p, %d, %d }\n", f_info->file, page_read_bytes, ofs);
 		if (!vm_alloc_page_with_initializer (VM_ANON, upage,
       writable, lazy_load_segment, f_info))
 			return false;
@@ -768,7 +770,9 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 		read_bytes -= page_read_bytes;
 		zero_bytes -= page_zero_bytes;
 		upage += PGSIZE;
+    ofs += page_read_bytes;
 	}
+  // printf(" =============== LOAD SEGMENT FINISH ===============\n");
 	return true;
 }
 
@@ -778,11 +782,12 @@ setup_stack (struct intr_frame *if_) {
 	bool success = false;
 	void *stack_bottom = (void *) (((uint8_t *) USER_STACK) - PGSIZE);
 
-	/* TODO: Map the stack on stack_bottom and claim the page immediately.
-	 * TODO: If success, set the rsp accordingly.
-	 * TODO: You should mark the page is stack. */
-	/* TODO: Your code goes here */
+  // if (vm_alloc_page (VM_ANON | IS_STACK, stack_bottom, 1) && vm_claim_page (stack_bottom)) {
+  if (vm_alloc_page (VM_ANON, stack_bottom, 1) && vm_claim_page (stack_bottom)) {
+    if_->rsp = USER_STACK;
+    success = true;
+  }
 
-	return success;
+  return success;
 }
 #endif /* VM */

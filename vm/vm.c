@@ -39,7 +39,7 @@ page_get_type (struct page *page) {
 
 /* Helpers */
 static struct frame *vm_get_victim (void);
-static bool vm_do_claim_page (struct page *page);
+static bool          vm_do_claim_page (struct page *page);
 static struct frame *vm_evict_frame (void);
 
 /* Create the pending page object with initializer. If you want to create a
@@ -47,9 +47,10 @@ static struct frame *vm_evict_frame (void);
  * `vm_alloc_page`. */
 bool
 vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable, vm_initializer *init, void *aux) {
-  ASSERT (VM_TYPE(type) != VM_UNINIT)
+  ASSERT (VM_TYPE(type) != VM_UNINIT);
+  struct supplemental_page_table *spt = &thread_current ()->spt;
 
-    struct supplemental_page_table *spt = &thread_current ()->spt;
+  type = (enum vm_type)VM_TYPE (type);                      //* TODO :::: IS_STACK 확인 필요
 
 	/* Check wheter the upage is already occupied or not. */
 	if (spt_find_page (spt, upage) == NULL) {
@@ -61,10 +62,10 @@ vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable, v
 
     switch (type) {
       case VM_ANON:
-        uninit_new (n_page, upage, init, type, NULL, anon_initializer);
+        uninit_new (n_page, upage, init, type, aux, anon_initializer);
         break;
       case VM_FILE:
-        uninit_new (n_page, upage, init, type, NULL, file_backed_initializer);
+        uninit_new (n_page, upage, init, type, aux, file_backed_initializer);
         break;
 
       case VM_PAGE_CACHE:
@@ -88,8 +89,7 @@ vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable, v
 /* Find VA from spt and return page. On error, return NULL. */
 struct page *
   spt_find_page (struct supplemental_page_table *spt, void *va) {
-  struct page *page = NULL;
-  page = page_lookup (va, (void *)&spt->spt_hash);
+  struct page *page = page_lookup (va, (void *)&spt->spt_hash);
 
 	return page;
 }
@@ -97,18 +97,15 @@ struct page *
 /* Insert PAGE into spt with validation. */
 bool
 spt_insert_page (struct supplemental_page_table *spt, struct page *page) {
+  bool succ = hash_insert (&spt->spt_hash, &page->h_elem) != NULL ? false : true;
 
-  struct hash_elem *is_exist = hash_insert (&spt->spt_hash, &page->h_elem);
-  if (is_exist != NULL)
-    return false;
-
-  return true;
+  return succ;
 }
 
 void
 spt_remove_page (struct supplemental_page_table *spt, struct page *page) {
 	vm_dealloc_page (page);
-	return true;
+  return;
 }
 
 /* Get the struct frame, that will be evicted. */
@@ -146,7 +143,7 @@ vm_get_frame (void) {
   //? (palloc 실패) 가상 공간이 없으면, 기존 페이지를 희생(비운 뒤) 만들어 리턴 (스왑)
   if (!frame->kva) {
     //TODO Swap Disk
-    PANIC("########## todo Swap Disk ###########\n");
+    PANIC(" ------ todo Swap Disk ------ \n");
   }
 
 	ASSERT (frame != NULL);
@@ -168,12 +165,13 @@ vm_handle_wp (struct page *page UNUSED) {
 bool
 vm_try_handle_fault (struct intr_frame *f, void *addr, bool user, bool write, bool not_present) {
   struct supplemental_page_table *spt = &thread_current ()->spt;
-  struct page *page = page_lookup (addr, spt);
+  struct page                    *page = spt_find_page (spt, addr);
 
   if (!page) {
+    printf("[ %s ] vm_try_handle_fault : NOT FOUND PAGE { %p }", thread_name (), page);
     return false;
   }
-
+  // printf(" =============== !!! RIGHT PAGE FAULT !!! =============== \n");
 	return vm_do_claim_page (page);
 }
 
@@ -189,6 +187,7 @@ vm_dealloc_page (struct page *page) {
 bool
 vm_claim_page (void *va) {
   struct page *page = spt_find_page (&thread_current()->spt, va);
+
   if (!page) {
     return false;
   }
@@ -199,26 +198,24 @@ vm_claim_page (void *va) {
 /* Claim the PAGE and set up the mmu. */
 static bool
 vm_do_claim_page (struct page *page) {
-	struct frame *frame = vm_get_frame ();
-  struct thread *t = thread_current ();
-  uint64_t uaddr = (uint64_t)page->va & ~PGMASK;
-  uint64_t writable = (uint64_t)page->va & PTE_W;
+  struct frame  *frame = vm_get_frame ();
+  struct thread     *t = thread_current ();
+  uint64_t       uaddr = (uint64_t)page->va & ~PGMASK;
+  uint64_t    writable = (uint64_t)page->va & PTE_W;
 
   if (!frame) {
-    return NULL;
+    return false;
   }
 	/* Set links */
 	frame->page = page;
 	page->frame = frame;
 
-  frame->kva = (void *)((uint64_t)frame->kva | (uint64_t)page->va & 0xfff);
-
-  if (pml4_get_page (t->pml4, (void *)uaddr) != NULL
-    && pml4_set_page (t->pml4, (void *)uaddr, frame->kva, writable)) {
-    printf(" ############ vm_do_clame : pml4_set_page fail\n");
+  if (!(pml4_get_page (t->pml4, (void *)uaddr) == NULL
+    && pml4_set_page (t->pml4, (void *)uaddr, frame->kva, writable))) {
     return false;
   }
-
+  frame->kva = (void *)((uint64_t)frame->kva | ((uint64_t)page->va & 0xfff));
+  // print_spt ();
 	return swap_in (page, frame->kva);
 }
 
@@ -263,16 +260,17 @@ hash_table_kill (struct hash_elem *e, void *aux) {
 /* Free the resource hold by the supplemental page table */
 void
 supplemental_page_table_kill (struct supplemental_page_table *spt) {
-  if (hash_empty (&spt->spt_hash)) {
-    return;
-  }
-  hash_destroy (&spt->spt_hash, hash_table_kill);
+  // if (hash_empty (&spt->spt_hash)) {
+  //   return;
+  // }
+  // hash_destroy (&spt->spt_hash, hash_table_kill);
 }
 
 unsigned
 page_hash (const struct hash_elem *p_, void *aux UNUSED) {
   const struct page *p = hash_entry (p_, struct page, h_elem);
-  return hash_bytes (&p->va, sizeof p->va);
+  uint64_t       vaddr = (uint64_t)pg_round_down (p->va);
+  return hash_bytes (&vaddr, sizeof p->va);
 }
 
 /* Returns true if page a precedes page b. */
@@ -282,16 +280,96 @@ page_less (const struct hash_elem *a_,
   const struct page *a = hash_entry (a_, struct page, h_elem);
   const struct page *b = hash_entry (b_, struct page, h_elem);
 
-  return a->va < b->va;
+  return pg_round_down(a->va) < pg_round_down(b->va);
 }
 
 /* Returns the page containing the given virtual address, or a null pointer if no such page exists. */
 struct page *
   page_lookup (const void *address, struct supplemental_page_table *spt) {
-  struct page p;
+  struct page       p;
   struct hash_elem *e;
 
-  p.va = (char *)address;
+  p.va = (void *)address;
   e = hash_find (&spt->spt_hash, &p.h_elem);
   return e != NULL ? hash_entry (e, struct page, h_elem) : NULL;
+}
+
+// ! ------------------------------------ DEBUGGING FUNC ------------------------------------ ! //
+void
+print_spt(void) {
+  struct hash *h = &thread_current()->spt.spt_hash;
+  struct hash_iterator i;
+
+  printf("============= {%s} SUP. PAGE TABLE (%d entries) =============\n", thread_current()->name, hash_size(h));
+  printf("   USER VA    | KERN VA (PA) |     TYPE     | STK | WRT | DRT(K/U) \n");
+
+  void *va, *kva;
+  enum vm_type type;
+  char *type_str, *stack_str, *writable_str, *dirty_k_str, *dirty_u_str;
+  stack_str = " - ";
+
+  hash_first (&i, h);
+  struct page *page;
+  // uint64_t *pte;
+  while (hash_next (&i)) {
+    page = hash_entry (hash_cur (&i), struct page, h_elem);
+
+    va = page->va;
+    if (page->frame) {
+      kva = page->frame->kva;
+      // pte = pml4e_walk(thread_current()->pml4, page->va, 0);
+      writable_str = (uint64_t)page->va & PTE_W ? "YES" : "NO";
+      // dirty_str = pml4_is_dirty(thread_current()->pml4, page->va) ? "YES" : "NO";
+      // dirty_k_str = is_dirty(page->frame->kpte) ? "YES" : "NO";
+      // dirty_u_str = is_dirty(page->frame->upte) ? "YES" : "NO";
+    }
+    else {
+      kva = NULL;
+      dirty_k_str = " - ";
+      dirty_u_str = " - ";
+    }
+    type = page->operations->type;
+    if (VM_TYPE(type) == VM_UNINIT) {
+      type = page->uninit.type;
+      switch (VM_TYPE(type)) {
+        case VM_ANON:
+          type_str = "UNINIT-ANON";
+          break;
+        case VM_FILE:
+          type_str = "UNINIT-FILE";
+          break;
+        case VM_PAGE_CACHE:
+          type_str = "UNINIT-P.C.";
+          break;
+        default:
+          type_str = "UNKNOWN (#)";
+          type_str[9] = VM_TYPE(type) + 48; // 0~7 사이 숫자의 아스키 코드
+      }
+      // stack_str = type & IS) ? "YES" : "NO";
+      struct file_page_args *fpargs = (struct file_page_args *)page->uninit.aux;
+      writable_str = (uint64_t)page->va & PTE_W ? "(Y)" : "(N)";
+    }
+    else {
+      stack_str = "NO";
+      switch (VM_TYPE(type)) {
+        case VM_ANON:
+          type_str = "ANON";
+          // stack_str = page->anon.is_stack ? "YES" : "NO";
+          break;
+        case VM_FILE:
+          type_str = "FILE";
+          break;
+        case VM_PAGE_CACHE:
+          type_str = "PAGE CACHE";
+          break;
+        default:
+          type_str = "UNKNOWN (#)";
+          type_str[9] = VM_TYPE(type) + 48; // 0~7 사이 숫자의 아스키 코드
+      }
+
+
+    }
+    printf(" %12p | %12p | %12s | %3s | %3s |  %3s/%3s \n",
+      pg_round_down (va), kva, type_str, stack_str, writable_str, dirty_k_str, dirty_u_str);
+  }
 }

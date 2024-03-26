@@ -19,7 +19,7 @@ enum vm_type {
 
 	/* Auxillary bit flag marker for store information. You can add more
 	 * markers, until the value is fit in the int. */
-	VM_MARKER_0 = (1 << 3),
+   // IS_STACK = (1 << 3),
 	VM_MARKER_1 = (1 << 4),
 
 	/* DO NOT EXCEED THIS VALUE. */
@@ -117,4 +117,7 @@ enum vm_type page_get_type (struct page *page);
 unsigned page_hash (const struct hash_elem *p_, void *aux UNUSED);
 bool page_less (const struct hash_elem *a_, const struct hash_elem *b_, void *aux UNUSED);
 struct page * page_lookup (const void *address, struct supplemental_page_table *spt);
+
+void print_spt(void);
+
 #endif  /* VM_VM_H */
