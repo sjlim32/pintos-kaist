@@ -129,7 +129,7 @@ syscall_handler (struct intr_frame *f UNUSED) {
       break;
 
     default:
-      printf("system call!\n");
+      printf("[ %s ] Not Define SYS CALL = { %d }\n", thread_name (), (int)f->R.rax);
       thread_exit ();
   }
 }

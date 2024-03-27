@@ -6,6 +6,7 @@
 #include "lib/kernel/hash.h"
 /* ------ Project 3 ------ */
 #include <stdio.h>
+#include "lib/string.h"
 #include "threads/pte.h"
 #include "threads/mmu.h"
 /* ----------------------- */
@@ -51,8 +52,6 @@ vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable, v
   ASSERT (VM_TYPE(type) != VM_UNINIT);
   struct supplemental_page_table *spt = &thread_current ()->spt;
 
-  type = (enum vm_type)VM_TYPE (type);                      //* TODO :::: IS_STACK 확인 필요
-
 	/* Check wheter the upage is already occupied or not. */
 	if (spt_find_page (spt, upage) == NULL) {
     struct page *n_page = malloc (sizeof(struct page));
@@ -61,7 +60,7 @@ vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable, v
       upage = (void *)((uint64_t)upage | PTE_W);
     }
 
-    switch (type) {
+    switch (VM_TYPE (type)) {
       case VM_ANON:
         uninit_new (n_page, upage, init, type, aux, anon_initializer);
         break;
@@ -165,12 +164,25 @@ vm_handle_wp (struct page *page UNUSED) {
 /* Return true on success */
 bool
 vm_try_handle_fault (struct intr_frame *f, void *addr, bool user, bool write, bool not_present) {
-  struct supplemental_page_table *spt = &thread_current ()->spt;
+  struct supplemental_page_table *spt = &thread_current()->spt;
   struct page                    *page = spt_find_page (spt, addr);
 
+  // if (!(page && get_is_stack)) {
+  //   return false;
+  // }
+
   if (!page) {
+    // printf("vm_try_handle_fault = addr { %p }\n", addr);
+    // PANIC ("vm_try_handle_fault = NOT FOUND !!! ");
     return false;
   }
+
+  bool get_is_stack = (uint64_t)page->uninit.type & IS_STACK;
+
+  if (!get_is_stack) {
+    PANIC ("vm_try_handle_fault = PROTECTION FAULT");
+  }
+
   // printf(" =============== !!! RIGHT PAGE FAULT !!! =============== \n");
 	return vm_do_claim_page (page);
 }
@@ -231,23 +243,49 @@ supplemental_page_table_init (struct supplemental_page_table *spt) {
 static void
 hash_page_copy (struct hash_elem *e, void *aux) {
   struct supplemental_page_table *dst = aux;
+  struct page            *parent_page = hash_entry(e, struct page, h_elem);
+  enum vm_type              vm_type = page_get_type (parent_page);
+  uint64_t                   writable = (uint64_t)parent_page & PTE_W;
 
-  hash_insert(&dst->spt_hash, e);
-  // vm_alloc_page_with_initializer ();
+  if (vm_type != VM_UNINIT) {
+    vm_alloc_page (vm_type, parent_page->va, writable);
+  }
+  //? anon 일 때 -> alloc, doclaim, memcpy
+  //? uninit 이면 -> alloc
+
+  struct page *copy_page;
+  switch (vm_type)
+  {
+    case VM_UNINIT:
+      copy_page->uninit = parent_page->uninit;
+      break;
+
+    case VM_ANON:
+      copy_page = spt_find_page (dst, parent_page->va);
+      vm_do_claim_page (copy_page);
+      memcpy (copy_page->frame->kva, parent_page->frame->kva, PGSIZE);
+      break;
+
+    case VM_FILE:
+      break;
+
+    default:
+      break;
+
+  }
+
+  // print_spt ();
 }
 
 bool
 supplemental_page_table_copy (struct supplemental_page_table *dst, struct supplemental_page_table *src) {
-
-  //? dst = 자식 SPT / src = 부모 SPT
-
   //* hash table 복제 
   dst->spt_hash.hash = src->spt_hash.hash;
   dst->spt_hash.less = src->spt_hash.less;
 
   //* 부모의 해시 페이지를 자식의 해시 테이블에 복사 - hash_apply
   src->spt_hash.aux = dst;
-  hash_apply(&src->spt_hash, hash_page_copy);
+  hash_apply (&src->spt_hash, hash_page_copy);
 
   return true;
 }
@@ -255,11 +293,6 @@ supplemental_page_table_copy (struct supplemental_page_table *dst, struct supple
 static void
 hash_page_kill (struct hash_elem *e, void *aux) {
   struct page *page = hash_entry(e, struct page, h_elem);
-
-  if (page->frame != NULL) {
-    // palloc_free_page(page->frame->kva);
-    free(page->frame);
-  }
 
   vm_dealloc_page (page);
 }
@@ -329,6 +362,8 @@ print_spt(void) {
       // dirty_str = pml4_is_dirty(thread_current()->pml4, page->va) ? "YES" : "NO";
       // dirty_k_str = is_dirty(page->frame->kpte) ? "YES" : "NO";
       // dirty_u_str = is_dirty(page->frame->upte) ? "YES" : "NO";
+      dirty_k_str = " - ";
+      dirty_u_str = " - ";
     }
     else {
       kva = NULL;

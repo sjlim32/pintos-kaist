@@ -37,6 +37,9 @@ static void __do_fork (void *);
 static void argument_passing (struct intr_frame *if_, int argv_cnt, char **argv_list);
 static struct thread *get_child (int tid);
 
+/* --- Project 3 - VM --- */
+static bool setup_stack (struct intr_frame *if_);
+
 /* General process initializer for initd and other process. */
 static void
 process_init (void) {
@@ -185,11 +188,13 @@ __do_fork (void *aux) {
 
   for (int i = 0; i < FD_COUNT_LIMIT; i++) {
     struct file *f = parent->fd_table[i];
-    if (f == NULL)
+    if (f == NULL) {
       continue;
+    }
 
-    if (i > 1)
+    if (i > 1) {
       f = file_duplicate(f);
+    }
     curr->fd_table[i] = f;
   }
   curr->fd_idx = parent->fd_idx;
@@ -198,9 +203,10 @@ __do_fork (void *aux) {
 	process_init ();
 
 	/* Finally, switch to the newly created process. */
-	if (succ)
+  if (succ) {
     sema_up(&curr->load_sema);                        //* fork
 		do_iret (&if_);
+  }
 
 error:
   /* --- Project 2 - System call --- */
@@ -331,7 +337,7 @@ process_exit (void) {
   palloc_free_multiple(curr->fd_table, FDT_PAGES);
   file_close(curr->runn_file);
 
-	process_cleanup ();
+  process_cleanup ();
 
   sema_up(&curr->wait_sema);                          //* WAIT : signal to parent
   sema_down(&curr->exit_sema);
@@ -346,22 +352,22 @@ process_cleanup (void) {
 	supplemental_page_table_kill (&curr->spt);
 #endif
 
-	uint64_t *pml4;
-	/* Destroy the current process's page directory and switch back
-	 * to the kernel-only page directory. */
-	pml4 = curr->pml4;
-	if (pml4 != NULL) {
-		/* Correct ordering here is crucial.  We must set
-		 * cur->pagedir to NULL before switching page directories,
-		 * so that a timer interrupt can't switch back to the
-		 * process page directory.  We must activate the base page
-		 * directory before destroying the process's page
-		 * directory, or our active page directory will be one
-		 * that's been freed (and cleared). */
-		curr->pml4 = NULL;
-		pml4_activate (NULL);
-		pml4_destroy (pml4);
-	}
+  uint64_t *pml4;
+  /* Destroy the current process's page directory and switch back
+   * to the kernel-only page directory. */
+  pml4 = curr->pml4;
+  if (pml4 != NULL) {
+    /* Correct ordering here is crucial.  We must set
+     * cur->pagedir to NULL before switching page directories,
+     * so that a timer interrupt can't switch back to the
+     * process page directory.  We must activate the base page
+     * directory before destroying the process's page
+     * directory, or our active page directory will be one
+     * that's been freed (and cleared). */
+    curr->pml4 = NULL;
+    pml4_activate (NULL);
+    pml4_destroy (pml4);
+  }
 }
 
 /* Sets up the CPU for running user code in the nest thread.
@@ -762,7 +768,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
     f_info->read_bytes = page_read_bytes;
     f_info->ofs = ofs;
     // printf(" ############### load_segment - f_info :      [ file, read_bytes, ofs ] = { %p, %d, %d }\n", f_info->file, page_read_bytes, ofs);
-		if (!vm_alloc_page_with_initializer (VM_ANON, upage,
+    if (!vm_alloc_page_with_initializer (VM_ANON | IS_STACK, upage,
       writable, lazy_load_segment, f_info))
 			return false;
 
