@@ -2,8 +2,10 @@
 #define VM_VM_H
 #include <stdbool.h>
 #include "threads/palloc.h"
+/* ------ Project 3 ------ */
 #include "lib/kernel/hash.h"
 #include <stdlib.h>
+/* ----------------------- */
 
 enum vm_type {
 	/* page not initialized */
@@ -19,7 +21,7 @@ enum vm_type {
 
 	/* Auxillary bit flag marker for store information. You can add more
 	 * markers, until the value is fit in the int. */
-   // IS_STACK = (1 << 3),
+  IS_STACK = (1 << 3),                                  //* Project 3 : Anonymous Page
 	VM_MARKER_1 = (1 << 4),
 
 	/* DO NOT EXCEED THIS VALUE. */
@@ -47,8 +49,8 @@ struct page {
 	void *va;              /* Address in terms of user space */
 	struct frame *frame;   /* Back reference for frame */
 
-	/* Your implementation */
-  struct hash_elem h_elem;
+  /* ------ Project 3 ------ */
+  struct hash_elem h_elem;                            //* Project 3 
 
 	/* Per-type data are binded into the union.
 	 * Each function automatically detects the current union */

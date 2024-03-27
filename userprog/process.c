@@ -26,7 +26,7 @@
 #include "vm/vm.h"
 #endif
 
-#define ARG_MAX 128                           //* Project 2 (args_passing) : strtok_r로 잘라줄 최대값
+#define ARG_MAX 128                                     //* Project 2 (args_passing) : strtok_r로 잘라줄 최대값
 
 static void process_cleanup (void);
 static bool load (const char *file_name, struct intr_frame *if_);
@@ -162,7 +162,7 @@ __do_fork (void *aux) {
   /* --- Project 2 - System call --- */
   struct intr_frame *parent_if = &parent->parent_if;
 
-  memcpy (&if_, parent_if, sizeof (struct intr_frame));    //* syscall : FORK
+  memcpy (&if_, parent_if, sizeof (struct intr_frame));                   //* syscall : FORK
   if_.R.rax = 0;
 
 	/* 2. Duplicate PT */
@@ -238,7 +238,7 @@ process_exec (void *f_name) {
   int idx = 0;
 
   for (token = strtok_r (file_name, " ", &save_ptr); token != NULL; token= strtok_r(NULL, " ", &save_ptr)) {
-    argv[idx++] = token;                          //* f_name에서 실행할 파일과 명령어들을 분리
+    argv[idx++] = token;                                    //* f_name에서 실행할 파일과 명령어들을 분리
   }
 
 	/* And then load the binary */
@@ -246,7 +246,7 @@ process_exec (void *f_name) {
   if (!success)
     return -1;
 
-  argument_passing (&_if, idx, argv);             //* 분리한 명령어들을 User Stack에 쌓기 위한 함수
+  argument_passing (&_if, idx, argv);                       //* 분리한 명령어들을 User Stack에 쌓기 위한 함수
 	/* If load failed, quit. */
   palloc_free_page (file_name);
 
@@ -333,7 +333,7 @@ process_exit (void) {
 
 	process_cleanup ();
 
-  sema_up(&curr->wait_sema);                //* WAIT : signal to parent
+  sema_up(&curr->wait_sema);                          //* WAIT : signal to parent
   sema_down(&curr->exit_sema);
 }
 
@@ -782,8 +782,7 @@ setup_stack (struct intr_frame *if_) {
 	bool success = false;
 	void *stack_bottom = (void *) (((uint8_t *) USER_STACK) - PGSIZE);
 
-  // if (vm_alloc_page (VM_ANON | IS_STACK, stack_bottom, 1) && vm_claim_page (stack_bottom)) {
-  if (vm_alloc_page (VM_ANON, stack_bottom, 1) && vm_claim_page (stack_bottom)) {
+  if (vm_alloc_page (VM_ANON | IS_STACK, stack_bottom, 1) && vm_claim_page (stack_bottom)) {
     if_->rsp = USER_STACK;
     success = true;
   }

@@ -3,11 +3,15 @@
 
 #include "threads/thread.h"
 
+#ifdef VM
+/* ------ Project 3 ------ */
 struct file_info {
   struct file *file;
   size_t read_bytes;
   off_t ofs;
 };
+/* ----------------------- */
+#endif
 
 tid_t process_create_initd (const char *file_name);
 tid_t process_fork (const char *name, struct intr_frame *if_);

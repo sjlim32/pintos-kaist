@@ -116,6 +116,18 @@ syscall_handler (struct intr_frame *f UNUSED) {
       close(f->R.rsi);
       break;
 
+    case SYS_MMAP:
+      mmap((void *)f->R.rdi, f->R.rsi, f->R.rdx, f->R.r10, f->R.r8);
+      break;
+
+    case SYS_MUNMAP:
+      munmap((void *)f->R.rdi);
+      break;
+
+    case SYS_DUP2:
+      f->R.rax = dup2(f->R.rdi, f->R.rsi);
+      break;
+
     default:
       printf("system call!\n");
       thread_exit ();
@@ -301,4 +313,32 @@ close (int fd) {
 
   curr->fd_table[fd] = NULL;
   file_close(f);
+}
+
+void *
+mmap (void *addr, size_t length, int writable, int fd, off_t offset) {
+  return;
+}
+
+void
+munmap (void *addr) {
+  return;
+}
+
+
+static int
+dup2 (int oldfd, int newfd) {
+  struct thread *curr = thread_current ();
+  struct file **fdt = curr->fd_table;
+  struct file *f = file_duplicate (curr->fd_table[oldfd]);
+
+  if (newfd > FD_COUNT_LIMIT || !is_kernel_vaddr(f) || f == NULL) {
+    return 1;
+  }
+  if (fdt[newfd] != NULL) {                   //* newfd 가 이전에 열려있다면, 재사용 되기 전에 닫힘
+
+    close(newfd);
+  }
+  fdt[newfd] = f;
+  return newfd;
 }

@@ -4,10 +4,11 @@
 #include "vm/vm.h"
 #include "vm/inspect.h"
 #include "lib/kernel/hash.h"
-
+/* ------ Project 3 ------ */
 #include <stdio.h>
 #include "threads/pte.h"
 #include "threads/mmu.h"
+/* ----------------------- */
 
 /* Initializes the virtual memory subsystem by invoking each subsystem's
  * intialize codes. */
@@ -38,9 +39,9 @@ page_get_type (struct page *page) {
 }
 
 /* Helpers */
-static struct frame *vm_get_victim (void);
+static struct frame *vm_get_victim    (void);
 static bool          vm_do_claim_page (struct page *page);
-static struct frame *vm_evict_frame (void);
+static struct frame *vm_evict_frame   (void);
 
 /* Create the pending page object with initializer. If you want to create a
  * page, do not create it directly and make it through this function or
@@ -168,7 +169,6 @@ vm_try_handle_fault (struct intr_frame *f, void *addr, bool user, bool write, bo
   struct page                    *page = spt_find_page (spt, addr);
 
   if (!page) {
-    printf("[ %s ] vm_try_handle_fault : NOT FOUND PAGE { %p }", thread_name (), page);
     return false;
   }
   // printf(" =============== !!! RIGHT PAGE FAULT !!! =============== \n");
@@ -189,6 +189,7 @@ vm_claim_page (void *va) {
   struct page *page = spt_find_page (&thread_current()->spt, va);
 
   if (!page) {
+    printf("[ %s ] vm_clame_page : NOT FOUND PAGE { %p }", thread_name (), page);
     return false;
   }
 
@@ -222,35 +223,41 @@ vm_do_claim_page (struct page *page) {
 /* Initialize new supplemental page table */
 void
 supplemental_page_table_init (struct supplemental_page_table *spt) {
-  hash_init (&spt->spt_hash, page_hash, page_less, NULL);
+  hash_init (&spt->spt_hash, (void *)page_hash, page_less, NULL);
 }
 
 /* Copy supplemental page table from src to dst */
 
-static
-void hash_table_copy (struct hash_elem *e, void *aux) {
+static void
+hash_page_copy (struct hash_elem *e, void *aux) {
   struct supplemental_page_table *dst = aux;
 
   hash_insert(&dst->spt_hash, e);
+  // vm_alloc_page_with_initializer ();
 }
 
 bool
 supplemental_page_table_copy (struct supplemental_page_table *dst, struct supplemental_page_table *src) {
 
+  //? dst = 자식 SPT / src = 부모 SPT
+
+  //* hash table 복제 
   dst->spt_hash.hash = src->spt_hash.hash;
   dst->spt_hash.less = src->spt_hash.less;
 
+  //* 부모의 해시 페이지를 자식의 해시 테이블에 복사 - hash_apply
   src->spt_hash.aux = dst;
-  hash_apply(&src->spt_hash, hash_table_copy);
+  hash_apply(&src->spt_hash, hash_page_copy);
 
+  return true;
 }
 
 static void
-hash_table_kill (struct hash_elem *e, void *aux) {
+hash_page_kill (struct hash_elem *e, void *aux) {
   struct page *page = hash_entry(e, struct page, h_elem);
 
   if (page->frame != NULL) {
-    palloc_free_page(page->frame->kva);
+    // palloc_free_page(page->frame->kva);
     free(page->frame);
   }
 
@@ -260,10 +267,10 @@ hash_table_kill (struct hash_elem *e, void *aux) {
 /* Free the resource hold by the supplemental page table */
 void
 supplemental_page_table_kill (struct supplemental_page_table *spt) {
-  // if (hash_empty (&spt->spt_hash)) {
-  //   return;
-  // }
-  // hash_destroy (&spt->spt_hash, hash_table_kill);
+  if (hash_empty (&spt->spt_hash)) {
+    return;
+  }
+  hash_destroy (&spt->spt_hash, hash_page_kill);
 }
 
 unsigned

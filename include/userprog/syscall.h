@@ -40,6 +40,11 @@ static void seek (int fd, unsigned position);
 static unsigned tell (int fd);
 void close (int fd);
 
+/* --- Project 2 (Extra) : Dup2 --- */
 static int dup2(int oldfd, int newfd);
+
+/* --- Project 3 : Memory Mapped Files --- */
+void *mmap (void *addr, size_t length, int writable, int fd, off_t offset);
+void munmap (void *addr);
 
 #endif /* userprog/syscall.h */
