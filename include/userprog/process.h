@@ -5,11 +5,11 @@
 
 #ifdef VM
 /* ------ Project 3 ------ */
-struct file_info {
+typedef struct {
   struct file *file;
   size_t read_bytes;
   off_t ofs;
-};
+} file_info;
 /* ----------------------- */
 #endif
 

@@ -9,6 +9,7 @@
 #include "lib/string.h"
 #include "threads/pte.h"
 #include "threads/mmu.h"
+#include "userprog/process.h"
 /* ----------------------- */
 
 /* Initializes the virtual memory subsystem by invoking each subsystem's
@@ -30,10 +31,10 @@ vm_init (void) {
  * This function is fully implemented now. */
 enum vm_type
 page_get_type (struct page *page) {
-	int ty = VM_TYPE (page->operations->type);
+  int ty = page->operations->type;
 	switch (ty) {
 		case VM_UNINIT:
-			return VM_TYPE (page->uninit.type);
+      return page->uninit.type;
 		default:
 			return ty;
 	}
@@ -153,7 +154,7 @@ vm_get_frame (void) {
 
 /* Growing the stack. */
 static void
-vm_stack_growth (void *addr UNUSED) {
+vm_stack_growth (void *addr) {
 }
 
 /*  the fault on write_protected page */
@@ -167,20 +168,13 @@ vm_try_handle_fault (struct intr_frame *f, void *addr, bool user, bool write, bo
   struct supplemental_page_table *spt = &thread_current()->spt;
   struct page                    *page = spt_find_page (spt, addr);
 
-  // if (!(page && get_is_stack)) {
-  //   return false;
-  // }
-
   if (!page) {
-    // printf("vm_try_handle_fault = addr { %p }\n", addr);
-    // PANIC ("vm_try_handle_fault = NOT FOUND !!! ");
     return false;
   }
 
   bool get_is_stack = (uint64_t)page->uninit.type & IS_STACK;
-
   if (!get_is_stack) {
-    PANIC ("vm_try_handle_fault = PROTECTION FAULT");
+    return false;
   }
 
   // printf(" =============== !!! RIGHT PAGE FAULT !!! =============== \n");
@@ -244,26 +238,36 @@ static void
 hash_page_copy (struct hash_elem *e, void *aux) {
   struct supplemental_page_table *dst = aux;
   struct page            *parent_page = hash_entry(e, struct page, h_elem);
-  enum vm_type              vm_type = page_get_type (parent_page);
+  enum vm_type                vm_type = page_get_type (parent_page);
   uint64_t                   writable = (uint64_t)parent_page & PTE_W;
 
-  if (vm_type != VM_UNINIT) {
-    vm_alloc_page (vm_type, parent_page->va, writable);
-  }
   //? anon 일 때 -> alloc, doclaim, memcpy
   //? uninit 이면 -> alloc
 
-  struct page *copy_page;
-  switch (vm_type)
-  {
+  switch (parent_page->operations->type) {
+    struct page    *child_page;
+    file_info      *child_aux;
+    void           *child_init;
+
     case VM_UNINIT:
-      copy_page->uninit = parent_page->uninit;
+      child_aux = malloc (sizeof(file_info));
+
+      if (child_aux == NULL) {
+        printf(" hash_page_copy = child_aux MALLOC FAILED !!! \n");
+        return;
+      }
+      memcpy (child_aux, parent_page->uninit.aux, sizeof(file_info));
+      child_init = parent_page->uninit.init;
+      child_page = parent_page->va;
+
+      vm_alloc_page_with_initializer (vm_type, child_page, writable, child_init, child_aux);
       break;
 
     case VM_ANON:
-      copy_page = spt_find_page (dst, parent_page->va);
-      vm_do_claim_page (copy_page);
-      memcpy (copy_page->frame->kva, parent_page->frame->kva, PGSIZE);
+      vm_alloc_page (vm_type, parent_page->va, writable);
+      child_page = spt_find_page (dst, parent_page->va);
+      vm_do_claim_page (child_page);
+      memcpy (child_page->frame->kva, parent_page->frame->kva, PGSIZE);
       break;
 
     case VM_FILE:
@@ -273,8 +277,6 @@ hash_page_copy (struct hash_elem *e, void *aux) {
       break;
 
   }
-
-  // print_spt ();
 }
 
 bool
@@ -300,10 +302,7 @@ hash_page_kill (struct hash_elem *e, void *aux) {
 /* Free the resource hold by the supplemental page table */
 void
 supplemental_page_table_kill (struct supplemental_page_table *spt) {
-  if (hash_empty (&spt->spt_hash)) {
-    return;
-  }
-  hash_destroy (&spt->spt_hash, hash_page_kill);
+  hash_clear (&spt->spt_hash, hash_page_kill);
 }
 
 unsigned

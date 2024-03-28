@@ -79,9 +79,9 @@ hash_clear (struct hash *h, hash_action_func *destructor) {
    elsewhere. */
 void
 hash_destroy (struct hash *h, hash_action_func *destructor) {
-	if (destructor != NULL)
-		hash_clear (h, destructor);
-	free (h->buckets);
+  if (destructor != NULL)
+    hash_clear (h, destructor);
+  free (h->buckets);
 }
 
 /* Inserts NEW into hash table H and returns a null pointer, if

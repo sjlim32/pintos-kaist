@@ -23,6 +23,7 @@
 #include "userprog/syscall.h"
 #endif
 #ifdef VM
+#include "threads/malloc.h"
 #include "vm/vm.h"
 #endif
 
@@ -233,7 +234,7 @@ process_exec (void *f_name) {
 	_if.eflags = FLAG_IF | FLAG_MBS;
 
 	/* We first kill the current context */
-	process_cleanup ();
+  process_cleanup ();
 
   /*
   ? Project 2 : Argument Passing
@@ -721,11 +722,12 @@ install_page (void *upage, void *kpage, bool writable) {
 
 static bool
 lazy_load_segment (struct page *page, void *aux) {
-  struct file_info *f_info = aux;
-
+  file_info *f_info = aux;
   // printf(" ############### lazy_load_segment - f_info : [ file, read_bytes, ofs ] = { %p, %d, %d }\n", f_info->file, f_info->read_bytes, f_info->ofs);
+  void *read_addr = pg_round_down((void *)page->frame->kva);
+
   file_seek(f_info->file, f_info->ofs);
-  if (file_read (f_info->file, (void *)page->frame->kva, f_info->read_bytes) != (int)f_info->read_bytes) {
+  if (file_read (f_info->file, read_addr, f_info->read_bytes) != (int)f_info->read_bytes) {
     palloc_free_page (page);
     return false;
   }
@@ -759,9 +761,9 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 		 * and zero the final PAGE_ZERO_BYTES bytes. */
 		size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
 		size_t page_zero_bytes = PGSIZE - page_read_bytes;
-    struct file_info *f_info;
+    file_info *f_info;
 
-    if (!(f_info = (struct file_info *)malloc (sizeof(struct file_info)))) {
+    if (!(f_info = malloc (sizeof(file_info)))) {
       return false;
     }
     f_info->file = file;
