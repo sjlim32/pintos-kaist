@@ -53,7 +53,7 @@ syscall_init (void) {
 /* The main system call interface */
 //! Project 2 - System calls
 void
-syscall_handler (struct intr_frame *f UNUSED) {
+syscall_handler (struct intr_frame *f) {
   //? 시스템콜 호출 번호 - %rax  - 인자 - %rdi, $rsi, %rdx, %r10, %r8, %r9
 
 #ifdef VM
@@ -138,6 +138,25 @@ syscall_handler (struct intr_frame *f UNUSED) {
 
 //! ------------------------ Project 2 : Systemcall ------------------------ *//
 static void
+check_addr (const char *addr) {
+#ifdef VM
+  if (!(addr && is_user_vaddr(addr))) {
+    exit(-1);
+  }
+  if (!spt_find_page(&thread_current ()->spt, (void *)addr)) {
+    bool right_addr = (uint64_t)addr & IS_STACK;
+    if (!right_addr) {
+      exit(-1);
+    }
+  }
+#else
+  if (!is_user_vaddr(addr) || addr == NULL || !pml4_get_page(thread_current()->pml4, addr)) {
+    exit(-1);
+  }
+#endif
+}
+
+static void
 halt (void) {
   power_off ();
 }
@@ -198,29 +217,17 @@ open (const char *file) {
   struct thread *curr = thread_current();
   struct file **fdt = curr->fd_table;
 
-  while (curr->fd_idx < FD_COUNT_LIMIT && fdt[curr->fd_idx])
+  while (curr->fd_idx < FD_COUNT_LIMIT && fdt[curr->fd_idx]) {
     curr->fd_idx++;
+  }
 
   if (curr->fd_idx >= FD_COUNT_LIMIT) {
     file_close (f);
     return -1;
   }
+
   fdt[curr->fd_idx] = f;
-
   return curr->fd_idx;
-}
-
-static void
-check_addr (const char *f_addr) {
-#ifdef VM
-  if (f_addr == NULL || !is_user_vaddr(f_addr) || spt_find_page(&thread_current ()->spt, (void *)f_addr) == NULL) {
-    exit(-1);
-  }
-#else
-  if (!is_user_vaddr(f_addr) || f_addr == NULL || !pml4_get_page(thread_current()->pml4, f_addr)) {
-    exit(-1);
-  }
-#endif
 }
 
 static bool
@@ -246,15 +253,19 @@ filesize (int fd) {
 
 static int
 read (int fd, void *buffer, unsigned length) {
+  // print_spt ();
+  // printf("syscall ( read ) - fd, buffer = { %d, %p }\n", fd, buffer);
   check_addr(buffer);
-  if (fd > FD_COUNT_LIMIT || fd == STDOUT_FILENO || fd < 0)
+  if (fd > FD_COUNT_LIMIT || fd == STDOUT_FILENO || fd < 0) {
     return -1;
+  }
 
   struct thread *curr = thread_current ();
   struct file *f = curr->fd_table[fd];
 
-  if (f == NULL)
+  if (f == NULL) {
     return -1;
+  }
 
   lock_acquire(&filesys_lock);
   int read_size = file_read(f, buffer, length);
@@ -283,7 +294,7 @@ write (int fd, const void *buffer, unsigned length) {
     lock_acquire(&filesys_lock);
     int write_size = file_write(f, buffer, length);
     lock_release(&filesys_lock);
-
+    // printf("syscall ( write ) - buffer addr, fd, f  = { %p, %d, %p }\n", buffer, fd, f);
     return write_size;
   }
 }

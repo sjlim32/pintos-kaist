@@ -155,10 +155,6 @@ vm_get_frame (void) {
 /* Growing the stack. */
 static void
 vm_stack_growth (void *addr) {
-  bool right_addr = (uint64_t)addr & IS_STACK;
-  if (!right_addr) {
-    return;
-  }
   vm_alloc_page(VM_ANON | IS_STACK, pg_round_down(addr), 1);
 }
 
@@ -171,8 +167,9 @@ vm_handle_wp (struct page *page UNUSED) {
 bool
 vm_try_handle_fault (struct intr_frame *f, void *addr, bool user, bool write, bool not_present) {
   uintptr_t rsp = user ? thread_current()->f_rsp : f->rsp;
+  // printf(" vm_try_handle_fault - addr, rsp = { %p , %p }\n", addr, rsp);
 
-  bool addr_in_stack = ((uint64_t)addr <= (rsp - 8)) && (USER_STACK - (uint64_t)addr < (1 << 20));
+  bool addr_in_stack = (((uint64_t)addr + PGSIZE) <= (rsp - 8)) && (USER_STACK - (uint64_t)addr < (1 << 20));
   if (addr_in_stack) {
     vm_stack_growth (addr);
   }
