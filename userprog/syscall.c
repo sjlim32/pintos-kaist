@@ -54,9 +54,11 @@ syscall_init (void) {
 //! Project 2 - System calls
 void
 syscall_handler (struct intr_frame *f UNUSED) {
-  //? 시스템콜 호출 번호 - %rax
-  //? 인자 - %rdi, $rsi, %rdx, %r10, %r8, %r9
+  //? 시스템콜 호출 번호 - %rax  - 인자 - %rdi, $rsi, %rdx, %r10, %r8, %r9
 
+#ifdef VM
+  thread_current ()->f_rsp = f->rsp;
+#endif
   int sys_number = f->R.rax;
 
   switch (sys_number) {

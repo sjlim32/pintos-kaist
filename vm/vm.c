@@ -155,6 +155,11 @@ vm_get_frame (void) {
 /* Growing the stack. */
 static void
 vm_stack_growth (void *addr) {
+  bool right_addr = (uint64_t)addr & IS_STACK;
+  if (!right_addr) {
+    return;
+  }
+  vm_alloc_page(VM_ANON | IS_STACK, pg_round_down(addr), 1);
 }
 
 /*  the fault on write_protected page */
@@ -165,20 +170,15 @@ vm_handle_wp (struct page *page UNUSED) {
 /* Return true on success */
 bool
 vm_try_handle_fault (struct intr_frame *f, void *addr, bool user, bool write, bool not_present) {
-  struct supplemental_page_table *spt = &thread_current()->spt;
-  struct page                    *page = spt_find_page (spt, addr);
+  uintptr_t rsp = user ? thread_current()->f_rsp : f->rsp;
 
-  if (!page) {
-    return false;
-  }
-
-  bool get_is_stack = (uint64_t)page->uninit.type & IS_STACK;
-  if (!get_is_stack) {
-    return false;
+  bool addr_in_stack = ((uint64_t)addr <= (rsp - 8)) && (USER_STACK - (uint64_t)addr < (1 << 20));
+  if (addr_in_stack) {
+    vm_stack_growth (addr);
   }
 
   // printf(" =============== !!! RIGHT PAGE FAULT !!! =============== \n");
-	return vm_do_claim_page (page);
+  return vm_claim_page (addr);
 }
 
 /* Free the page.
@@ -193,9 +193,12 @@ vm_dealloc_page (struct page *page) {
 bool
 vm_claim_page (void *va) {
   struct page *page = spt_find_page (&thread_current()->spt, va);
-
   if (!page) {
-    printf("[ %s ] vm_clame_page : NOT FOUND PAGE { %p }", thread_name (), page);
+    return false;
+  }
+
+  bool page_in_stack = (uint64_t)page->uninit.type & IS_STACK;
+  if (!page_in_stack) {
     return false;
   }
 
