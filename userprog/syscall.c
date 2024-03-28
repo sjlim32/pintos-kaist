@@ -131,26 +131,65 @@ syscall_handler (struct intr_frame *f) {
       break;
 
     default:
-      printf("[ %s ] Not Define SYS CALL = { %d }\n", thread_name (), (int)f->R.rax);
+      printf ("[ %d ] is Not Define SYS CALL { now thread = %p }\n", (int)f->R.rax, thread_name ());
       thread_exit ();
   }
 }
 
 //! ------------------------ Project 2 : Systemcall ------------------------ *//
 static void
-check_addr (const char *addr) {
+check_addr (void *addr) {
 #ifdef VM
-  if (!(addr && is_user_vaddr(addr))) {
-    exit(-1);
+  bool find_succ = spt_find_page (&thread_current ()->spt, addr);
+
+  if (!(addr && is_user_vaddr (addr) && find_succ)) {
+    exit (-1);
   }
-  if (!spt_find_page(&thread_current ()->spt, (void *)addr)) {
-    bool right_addr = (uint64_t)addr & IS_STACK;
-    if (!right_addr) {
-      exit(-1);
+#else
+  if (!is_user_vaddr (addr) || addr == NULL || !pml4_get_page (thread_current ()->pml4, addr)) {
+    exit (-1);
+  }
+#endif
+}
+
+static void
+check_buffer (void *buffer) {
+#ifdef VM
+  if (!(buffer && is_user_vaddr (buffer))) {
+    exit (-1);
+  }
+  struct thread *curr = thread_current ();
+  struct page *find_page = spt_find_page (&curr->spt, (void *)buffer);
+
+  // print_spt ();
+  // printf ("syscall ( check_buffer ) : curr rsp, buffer = { %p, %p }\n", (void *)curr->f_rsp, buffer);
+  // printf ("syscall ( check_buffer ) : is_kern_addr ? = { %d }\n", is_kernel_vaddr (buffer));
+  // printf ("syscall ( check_buffer ) : curr rsp - buffer = ( %lld )\n", (curr->f_rsp - (uint64_t)buffer));
+
+  if (!find_page) {
+    uint64_t buffer = buffer;
+    if (buffer < USER_STACK && (curr->f_rsp < buffer)) {
+      return;
+    }
+    // if (curr->f_rsp < (uint64_t)buffer) {
+    //   printf ("not found, but right addr !!\n");
+    //   return;
+    // }
+
+    // bool right_buffer = (uint64_t)buffer & IS_STACK;
+    // printf ("syscall ( check_buffer ) FAIL FIND PAGE : right_buffer = { %d }\n", right_buffer);
+    // if (!right_buffer)
+    exit (-1);
+  }
+  else {
+    bool writable = (uint64_t)find_page->va & PTE_W;
+    // printf ("syscall ( check_buffer ) SUCC FIND PAGE : writable = { %d }\n", writable);
+    if (!writable) {
+      exit (-1);
     }
   }
 #else
-  if (!is_user_vaddr(addr) || addr == NULL || !pml4_get_page(thread_current()->pml4, addr)) {
+  if (!is_user_vaddr (buffer) || buffer == NULL || !pml4_get_page (thread_current ()->pml4, buffer)) {
     exit(-1);
   }
 #endif
@@ -225,7 +264,7 @@ open (const char *file) {
     file_close (f);
     return -1;
   }
-
+  // printf ("syscall ( open ) - file_addr, fd = { %p, %d }\n", file, curr->fd_idx);
   fdt[curr->fd_idx] = f;
   return curr->fd_idx;
 }
@@ -253,14 +292,15 @@ filesize (int fd) {
 
 static int
 read (int fd, void *buffer, unsigned length) {
+  struct thread *curr = thread_current ();
   // print_spt ();
-  // printf("syscall ( read ) - fd, buffer = { %d, %p }\n", fd, buffer);
-  check_addr(buffer);
+  // printf ("syscall ( read ) : curr rsp, buffer = { %p, %p }\n", (void *)curr->f_rsp, buffer);
+  // printf ("syscall ( read ) : curr rsp - buffer = ( %llu )\n", (uint64_t)curr->f_rsp - (uint64_t)buffer);
+  check_buffer (buffer);
   if (fd > FD_COUNT_LIMIT || fd == STDOUT_FILENO || fd < 0) {
     return -1;
   }
 
-  struct thread *curr = thread_current ();
   struct file *f = curr->fd_table[fd];
 
   if (f == NULL) {
@@ -294,7 +334,7 @@ write (int fd, const void *buffer, unsigned length) {
     lock_acquire(&filesys_lock);
     int write_size = file_write(f, buffer, length);
     lock_release(&filesys_lock);
-    // printf("syscall ( write ) - buffer addr, fd, f  = { %p, %d, %p }\n", buffer, fd, f);
+    // printf ("syscall ( write ) - buffer addr, fd, f  = { %p, %d, %p }\n", buffer, fd, f);
     return write_size;
   }
 }
