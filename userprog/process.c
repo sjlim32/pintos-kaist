@@ -314,10 +314,11 @@ argument_passing (struct intr_frame *if_, int argv_cnt, char **argv_list) {
  * This function will be implemented in problem 2-2.  For now, it
  * does nothing. */
 int
-process_wait (tid_t child_tid UNUSED) {
+process_wait (tid_t child_tid) {
   struct thread *child = get_child(child_tid);
-  if (child == NULL || child_tid < 0)
+  if (child == NULL || child_tid < 0) {
     return -1;
+  }
 
   sema_down (&child->wait_sema);
   list_remove(&child->c_elem);
@@ -330,6 +331,14 @@ process_wait (tid_t child_tid UNUSED) {
 void
 process_exit (void) {
   struct thread *curr = thread_current ();
+  struct list_elem *e;
+
+  if (!list_empty (&curr->child_list)) {
+    for (e = list_begin (&curr->child_list); e != list_end (&curr->child_list); e = list_next (e)) {
+      struct thread *t = list_entry (e, struct thread, c_elem);
+      process_wait (t->tid);
+    }
+  }
 
   for (int fd = 0; fd < FD_COUNT_LIMIT; fd++) {
     close(fd);

@@ -155,7 +155,7 @@ vm_get_frame (void) {
 /* Growing the stack. */
 static void
 vm_stack_growth (void *addr) {
-  vm_alloc_page(VM_ANON | IS_STACK, pg_round_down(addr), 1);
+  vm_alloc_page (VM_ANON | IS_STACK, pg_round_down (addr), true);
 }
 
 /*  the fault on write_protected page */

@@ -23,7 +23,8 @@ typedef int off_t;
 
 struct lock filesys_lock;
 
-static void check_addr (void *addr);
+static void check_addr (const char *file);
+static void check_buffer (const char *buffer);
 
 static void halt (void) NO_RETURN;
 void exit (int status) NO_RETURN;
