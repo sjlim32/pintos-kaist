@@ -103,11 +103,10 @@ void print_ready() {
     enum intr_level old_level = intr_disable ();
     struct list_elem *e;
     struct thread *t;
-    printf("[DEBUG] PRINTING ALL READY THREADS\n");
+
     for (e = list_begin(&ready_list); e != list_end(&ready_list); e = e->next) {
         t = list_entry(e, struct thread, elem);
-        printf("thread#%d (%s) at %p, priority=%d\n", t->tid, t->name, e, t->priority);
-        // printf("thread#%d (%s) at %p\n", t->tid, t->name, e);
+        printf ("thread#%d (%s) at %p, priority=%d\n", t->tid, t->name, e, t->priority);
     }
     printf("tail at %p\n", list_end(&ready_list));
     intr_set_level (old_level);

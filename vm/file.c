@@ -1,6 +1,13 @@
 /* file.c: Implementation of memory backed file object (mmaped object). */
 
 #include "vm/vm.h"
+/* ------ Project 3 ------ */
+#include <stdio.h>
+#include "userprog/process.h"
+#include "threads/malloc.h"
+#include "threads/vaddr.h"
+#include "vm/file.h"
+#include <round.h>
 
 static bool file_backed_swap_in (struct page *page, void *kva);
 static bool file_backed_swap_out (struct page *page);
@@ -48,8 +55,54 @@ file_backed_destroy (struct page *page) {
 
 /* Do the mmap */
 void *
-do_mmap (void *addr, size_t length, int writable,
-		struct file *file, off_t offset) {
+do_mmap (void *addr, size_t length, int writable, struct file *file, off_t offset) {
+  /* MMAP
+fd로 열린 파일의 오프셋 바이트부터, 길이만큼을 프로스세의 가상주소공간의 addr에 매핑함
+전체 파일은 연속된 가상페이지에 매핑돰
+파일 길이가 PGSIZE의 배수가 아닌 경우, 최종 매핑 페이지의 일부 바이트가 파일 끝을 넘어 stick out 됨
+page_fault 발생 시, 이 바이트를 0으로 설정하고 페이지를 디스크에 다시 쓸 때 버림
+? fd의 파일을 가져옴 -> offset + length 만큼 addr에 매핑함
+? fd의 파일을 매핑 시, 연속된 가상페이지 주소에 할당됨 ( lazy load 필요, vm_alloc_page_with_initializer 활용)
+? file의 length 가 PGSIZE 의 배수가 아닌 경우, 최종 매핑된 페이지의 일부 바이트가 넘어갈 수 있음
+? page_fault 가 발생하면, 넘어간 일부 바이트를 0으로 설정하고 페이지를 디스크에 다시 쓸 때 버림
+
+? 성공 시, 파일이 매핑된 가상 주소를 리턴
+? 실패 시, NULL 리턴 ( 실패하는 경우 -> addr = 0 , length = 0, fd가 stdin & stdout)
+*/
+
+// printf ("file ( do_mmap ) : addr { %p } , length { %d }, w { %d }, f { %p }, offs { %d }\n",
+  // addr, (int)length, writable, file, offset);
+  // uint32_t zero_length = ROUND_UP (offset + (int)length, PGSIZE);
+  void *uaddr = addr;
+
+  // while (length > 0 || zero_length > 0) {
+  while (length > 0) {
+
+    size_t page_length = length < PGSIZE ? length : PGSIZE;
+    // size_t page_zero_length = PGSIZE - page_length;
+    file_info *f_info;
+
+    if (!(f_info = malloc (sizeof (file_info)))) {
+      return NULL;
+    }
+    f_info->file = file;
+    f_info->read_bytes = file_length (file);
+    f_info->ofs = offset;
+    // printf ("file ( do_mmap ) : page_length , pag_zero_length : { %d, %d }\n", page_length, page_zero_length);
+
+    if (!vm_alloc_page_with_initializer (VM_FILE | IS_STACK, addr, writable, lazy_load_segment, f_info)) {
+      // printf ("file ( do_mmap ) : FAILED - vm_alloc_page_with_initializer\n");
+      return NULL;
+    }
+
+    // printf ("file ( do_mmap ) : FINISH - vm_clame_page\n");
+    /* Advance. */
+    length -= page_length;
+    // zero_length -= page_zero_length;
+    addr += PGSIZE;
+    offset += page_length;
+  }
+  return uaddr;
 }
 
 /* Do the munmap */

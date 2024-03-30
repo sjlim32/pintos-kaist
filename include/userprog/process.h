@@ -10,6 +10,8 @@ typedef struct {
   size_t read_bytes;
   off_t ofs;
 } file_info;
+
+bool lazy_load_segment (struct page *page, void *aux);
 /* ----------------------- */
 #endif
 

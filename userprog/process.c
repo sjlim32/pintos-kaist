@@ -729,15 +729,15 @@ install_page (void *upage, void *kpage, bool writable) {
  * If you want to implement the function for only project 2, implement it on the
  * upper block. */
 
-static bool
+bool
 lazy_load_segment (struct page *page, void *aux) {
   file_info *f_info = aux;
-  // printf(" ############### lazy_load_segment - f_info : [ file, read_bytes, ofs ] = { %p, %d, %d }\n", f_info->file, f_info->read_bytes, f_info->ofs);
+  // printf ("lazy_load_segment - f_info : [ file, read_bytes, ofs ] = { %p, %d, %d }\n", f_info->file, (int)f_info->read_bytes, f_info->ofs);
   void *read_addr = pg_round_down((void *)page->frame->kva);
 
   file_seek(f_info->file, f_info->ofs);
   if (file_read (f_info->file, read_addr, f_info->read_bytes) != (int)f_info->read_bytes) {
-    palloc_free_page (page);
+    palloc_free_page (pg_round_down (page));
     return false;
   }
   return true;
@@ -778,11 +778,10 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
     f_info->file = file;
     f_info->read_bytes = page_read_bytes;
     f_info->ofs = ofs;
-    // printf(" ############### load_segment - f_info :      [ file, read_bytes, ofs ] = { %p, %d, %d }\n", f_info->file, page_read_bytes, ofs);
-    if (!vm_alloc_page_with_initializer (VM_ANON | IS_STACK, upage,
-      writable, lazy_load_segment, f_info))
-			return false;
-
+    // printf ("load_segment - f_info :      [ file, read_bytes, ofs ] = { %p, %d, %d }\n", f_info->file, page_read_bytes, ofs);
+    if (!vm_alloc_page_with_initializer (VM_ANON | IS_STACK, upage, writable, lazy_load_segment, f_info)) {
+      return false;
+    }
 		/* Advance. */
 		read_bytes -= page_read_bytes;
 		zero_bytes -= page_zero_bytes;

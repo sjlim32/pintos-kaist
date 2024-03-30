@@ -191,11 +191,13 @@ bool
 vm_claim_page (void *va) {
   struct page *page = spt_find_page (&thread_current()->spt, va);
   if (!page) {
+    // printf ("vm_claim_page : NOT FOUND PAGE || va = { %p }\n", va);
     return false;
   }
 
   bool page_in_stack = (uint64_t)page->uninit.type & IS_STACK;
   if (!page_in_stack) {
+    // printf ("vm_claim_page : NOT PAGE IN STACK\n");
     return false;
   }
 
@@ -253,7 +255,6 @@ hash_page_copy (struct hash_elem *e, void *aux) {
       child_aux = malloc (sizeof(file_info));
 
       if (child_aux == NULL) {
-        printf(" hash_page_copy = child_aux MALLOC FAILED !!! \n");
         return;
       }
       memcpy (child_aux, parent_page->uninit.aux, sizeof(file_info));
@@ -339,30 +340,32 @@ print_spt(void) {
   struct hash *h = &thread_current()->spt.spt_hash;
   struct hash_iterator i;
 
-  printf("============= {%s} SUP. PAGE TABLE (%d entries) =============\n", thread_current()->name, hash_size(h));
-  printf("   USER VA    | KERN VA (PA) |     TYPE     | STK | WRT | DRT(K/U) \n");
+  printf ("============= {%s} SUP. PAGE TABLE (%d entries) =============\n", thread_current ()->name, hash_size (h));
+  printf ("   USER VA    | KERN VA (PA) |     TYPE     | STK | WRT | DRT(K/U) | OFFSET \n");
 
   void *va, *kva;
   enum vm_type type;
-  char *type_str, *stack_str, *writable_str, *dirty_k_str, *dirty_u_str;
+  char *type_str, *stack_str, *writable_str, *dirty_str, *dirty_k_str, *dirty_u_str;
+  file_info *f_info;
+  int32_t ofs;
   stack_str = " - ";
 
   hash_first (&i, h);
   struct page *page;
-  // uint64_t *pte;
+  uint64_t *pte;
   while (hash_next (&i)) {
     page = hash_entry (hash_cur (&i), struct page, h_elem);
 
     va = page->va;
     if (page->frame) {
       kva = page->frame->kva;
-      // pte = pml4e_walk(thread_current()->pml4, page->va, 0);
+      // pte = pml4e_walk (thread_current ()->pml4, (uint64_t)page->va, 0);
       writable_str = (uint64_t)page->va & PTE_W ? "YES" : "NO";
-      // dirty_str = pml4_is_dirty(thread_current()->pml4, page->va) ? "YES" : "NO";
-      // dirty_k_str = is_dirty(page->frame->kpte) ? "YES" : "NO";
-      // dirty_u_str = is_dirty(page->frame->upte) ? "YES" : "NO";
-      dirty_k_str = " - ";
-      dirty_u_str = " - ";
+      // dirty_str = pml4_is_dirty (thread_current ()->pml4, page->va) ? "YES" : "NO";
+      // dirty_k_str = is_dirty (page->frame->kpte) ? "YES" : "NO";
+      // dirty_u_str = is_dirty (page->frame->upte) ? "YES" : "NO";
+      // dirty_k_str = " - ";
+      // dirty_u_str = " - ";
     }
     else {
       kva = NULL;
@@ -386,7 +389,7 @@ print_spt(void) {
           type_str = "UNKNOWN (#)";
           type_str[9] = VM_TYPE(type) + 48; // 0~7 사이 숫자의 아스키 코드
       }
-      // stack_str = type & IS) ? "YES" : "NO";
+      // stack_str = (type & IS_STACK) ? "YES" : "NO";
       struct file_page_args *fpargs = (struct file_page_args *)page->uninit.aux;
       writable_str = (uint64_t)page->va & PTE_W ? "(Y)" : "(N)";
     }
@@ -407,10 +410,16 @@ print_spt(void) {
           type_str = "UNKNOWN (#)";
           type_str[9] = VM_TYPE(type) + 48; // 0~7 사이 숫자의 아스키 코드
       }
-
+      if (page->uninit.aux) {
+        f_info = page->uninit.aux;
+        ofs = f_info->ofs;
+      }
+      else {
+        ofs = 0;
+      }
 
     }
-    printf(" %12p | %12p | %12s | %3s | %3s |  %3s/%3s \n",
-      pg_round_down (va), kva, type_str, stack_str, writable_str, dirty_k_str, dirty_u_str);
+    printf (" %12p | %12p | %12s | %3s | %3s |  %3s/%3s | %6d \n",
+      pg_round_down (va), kva, type_str, stack_str, writable_str, dirty_k_str, dirty_u_str, ofs);
   }
 }

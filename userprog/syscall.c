@@ -17,6 +17,8 @@
 #include "threads/init.h"
 #include "threads/palloc.h"
 #include "threads/vaddr.h"
+/* ------ Project 3 ------ */
+#include "vm/file.h"
 /* ------------------------ */
 
 void syscall_entry (void);
@@ -119,7 +121,7 @@ syscall_handler (struct intr_frame *f) {
       break;
 
     case SYS_MMAP:
-      mmap((void *)f->R.rdi, f->R.rsi, f->R.rdx, f->R.r10, f->R.r8);
+      f->R.rax = (uint64_t)mmap ((void *)f->R.rdi, f->R.rsi, f->R.rdx, f->R.r10, f->R.r8);
       break;
 
     case SYS_MUNMAP:
@@ -163,8 +165,7 @@ check_buffer (const char *buffer) {
   struct page *find_page = spt_find_page (&curr->spt, (void *)buffer);
 
   if (!find_page) {
-    uint64_t buffer = buffer;
-    if (buffer < USER_STACK && (curr->f_rsp < buffer)) {
+    if ((uint64_t)buffer < USER_STACK && (curr->f_rsp < (uint64_t)buffer)) {
       return;
     }
     exit (-1);
@@ -239,7 +240,6 @@ open (const char *file) {
   struct file *f = filesys_open(file);
   if (f == NULL)
     return -1;
-
   struct thread *curr = thread_current();
   struct file **fdt = curr->fd_table;
   while (curr->fd_idx < FD_COUNT_LIMIT && fdt[curr->fd_idx]) {
@@ -357,12 +357,43 @@ close (int fd) {
   file_close(f);
 }
 
+/*
+TODO - file-backed memory
+TODO - page fault 발생 시, 즉시 물리 프레임 할당 및 파일에서 메모리로 데이터가 복사되어야 함
+TODO - 페이지가 ummapped 또는 swap out 시, 콘텐츠의 모든 변경 사항이 파일에 반영되어야 함
+
+TODO - VM 시스템은 mmap 영역에서 페이지를 lazy load 해야함
+TODO - mmap 된 파일 자체를 매핑을 위한 백업 저장소로 사용함
+*/
+
 void *
 mmap (void *addr, size_t length, int writable, int fd, off_t offset) {
+  // printf ("syscall ( mmap ) : START \n");
+
+  void * succ = NULL;
+  if (length < offset || !addr || !length || fd > FD_COUNT_LIMIT || fd <= 1) {
+    return NULL;
+  }
+
+  struct thread *curr = thread_current ();
+  struct file *file = curr->fd_table[fd];
+
+  if (file == NULL)
+    return NULL;
+
+  // printf ("syscall ( mmap ) : addr, file in kernel = { %p, %p }\n", addr, file);
+  succ = do_mmap (addr, length, writable, file, offset);
+  // print_spt ();
+  return succ;
 }
 
 void
 munmap (void *addr) {
+  /*
+  TODO - file-backed memory
+  TODO - 페이지가 ummapped 또는 swap out 시, 콘텐츠의 모든 변경 사항이 파일에 반영되어야 함
+  */
+  do_munmap (addr);
   return;
 }
 
