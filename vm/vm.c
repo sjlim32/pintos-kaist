@@ -347,7 +347,7 @@ print_spt(void) {
   enum vm_type type;
   char *type_str, *stack_str, *writable_str, *dirty_str, *dirty_k_str, *dirty_u_str;
   file_info *f_info;
-  int32_t ofs;
+  uint32_t ofs;
   stack_str = " - ";
 
   hash_first (&i, h);
@@ -364,8 +364,8 @@ print_spt(void) {
       // dirty_str = pml4_is_dirty (thread_current ()->pml4, page->va) ? "YES" : "NO";
       // dirty_k_str = is_dirty (page->frame->kpte) ? "YES" : "NO";
       // dirty_u_str = is_dirty (page->frame->upte) ? "YES" : "NO";
-      // dirty_k_str = " - ";
-      // dirty_u_str = " - ";
+      dirty_k_str = " - ";
+      dirty_u_str = " - ";
     }
     else {
       kva = NULL;

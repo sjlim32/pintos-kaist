@@ -50,7 +50,10 @@ file_backed_swap_out (struct page *page) {
 /* Destory the file backed page. PAGE will be freed by the caller. */
 static void
 file_backed_destroy (struct page *page) {
-	struct file_page *file_page UNUSED = &page->file;
+  struct file_page *file_page = page;
+  if (page->uninit.aux) {
+    free (page->uninit.aux);
+  }
 }
 
 /* Do the mmap */
@@ -72,13 +75,17 @@ page_fault 발생 시, 이 바이트를 0으로 설정하고 페이지를 디스
 
 // printf ("file ( do_mmap ) : addr { %p } , length { %d }, w { %d }, f { %p }, offs { %d }\n",
   // addr, (int)length, writable, file, offset);
+
   // uint32_t zero_length = ROUND_UP (offset + (int)length, PGSIZE);
-  void *uaddr = addr;
+  void *init_addr = addr;
+  size_t init_length = length;
+  uint32_t read_bytes = file_length (file);
 
   // while (length > 0 || zero_length > 0) {
+  // while (read_bytes > 0) {
   while (length > 0) {
 
-    size_t page_length = length < PGSIZE ? length : PGSIZE;
+    size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
     // size_t page_zero_length = PGSIZE - page_length;
     file_info *f_info;
 
@@ -86,9 +93,8 @@ page_fault 발생 시, 이 바이트를 0으로 설정하고 페이지를 디스
       return NULL;
     }
     f_info->file = file;
-    f_info->read_bytes = file_length (file);
+    f_info->read_bytes = page_read_bytes;
     f_info->ofs = offset;
-    // printf ("file ( do_mmap ) : page_length , pag_zero_length : { %d, %d }\n", page_length, page_zero_length);
 
     if (!vm_alloc_page_with_initializer (VM_FILE | IS_STACK, addr, writable, lazy_load_segment, f_info)) {
       // printf ("file ( do_mmap ) : FAILED - vm_alloc_page_with_initializer\n");
@@ -97,15 +103,41 @@ page_fault 발생 시, 이 바이트를 0으로 설정하고 페이지를 디스
 
     // printf ("file ( do_mmap ) : FINISH - vm_clame_page\n");
     /* Advance. */
-    length -= page_length;
+    read_bytes -= page_read_bytes;
     // zero_length -= page_zero_length;
     addr += PGSIZE;
-    offset += page_length;
+    offset += page_read_bytes;
+    length -= PGSIZE;
   }
-  return uaddr;
+  struct page *page = spt_find_page (&thread_current ()->spt, init_addr);
+  page->file_length = init_length;
+
+  return init_addr;
 }
 
 /* Do the munmap */
 void
 do_munmap (void *addr) {
+  struct thread *curr = thread_current ();
+  struct page *page = spt_find_page (&curr->spt, addr);
+  uint32_t rep = (page->file_length % PGSIZE) == 0 ? page->file_length / PGSIZE : (page->file_length / PGSIZE) + 1;
+  // print_spt ();
+  // printf ("do_munmap : addr = { %p, %d }\n", addr, page->file_length);
+  // printf ("do_munmap : rep, file_length = { %d }\n", rep);
+
+  while (rep) {
+    printf ("do_munmap : rep START { %d }\n", rep);
+    rep--;
+    // printf (" do_mummap : page = { %p }\n", page);
+    hash_delete (&curr->spt.spt_hash, &page->h_elem);
+    // printf ("do_munmap : hash_delete\n");
+    vm_dealloc_page (page);
+    // printf ("do_munmap : dealloc_page\n");
+
+    if (rep) {
+      // printf (" addr = { %p }\n", addr);
+      page = spt_find_page (&curr->spt, addr + PGSIZE);
+    }
+  }
+  // print_spt ();
 }
