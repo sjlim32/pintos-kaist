@@ -10,6 +10,7 @@
 #include "threads/pte.h"
 #include "threads/mmu.h"
 #include "userprog/process.h"
+#include "userprog/syscall.h"
 /* ----------------------- */
 
 /* Initializes the virtual memory subsystem by invoking each subsystem's
@@ -155,7 +156,15 @@ vm_get_frame (void) {
 /* Growing the stack. */
 static void
 vm_stack_growth (void *addr) {
-  vm_alloc_page (VM_ANON | IS_STACK, pg_round_down (addr), true);
+  void *address = pg_round_down (addr);
+  struct supplemental_page_table *spt = &thread_current ()->spt;
+  struct page *p = spt_find_page (spt, address);
+
+  while (!p) {
+    vm_alloc_page (VM_ANON | IS_STACK, pg_round_down (address), true);
+    address += PGSIZE;
+    p = spt_find_page (spt, pg_round_down (address));
+  }
 }
 
 /*  the fault on write_protected page */
@@ -166,11 +175,17 @@ vm_handle_wp (struct page *page UNUSED) {
 /* Return true on success */
 bool
 vm_try_handle_fault (struct intr_frame *f, void *addr, bool user, bool write, bool not_present) {
-  uintptr_t rsp = user ? thread_current()->f_rsp : f->rsp;
-  // printf(" vm_try_handle_fault - addr, rsp = { %p , %p }\n", addr, rsp);
+  // uintptr_t rsp = user ? thread_current()->f_rsp : f->rsp;
+  // uintptr_t rsp = user ? f->rsp : thread_current ()->tf.rsp;
+  uintptr_t rsp = f->rsp;
 
-  bool addr_in_stack = (((uint64_t)addr + PGSIZE) <= (rsp - 8)) && (USER_STACK - (uint64_t)addr < (1 << 20));
+  // printf (" vm_try_handle_fault - is user, write, not_pre ? = { %d, %d, %d }\n", user, write, not_present);
+  // printf (" vm_try_handle_fault - addr, tf.rsp = { %p , %p }\n", addr, rsp);
+
+  // bool addr_in_stack = (((uint64_t)addr + PGSIZE) <= (rsp - 32)) && (USER_STACK - (uint64_t)addr < (1 << 20));
+  bool addr_in_stack = ((uint64_t)addr >= (rsp - 8)) && (USER_STACK - (uint64_t)addr < (1 << 20));
   if (addr_in_stack) {
+    // printf (" =============== !!! RIGHT STACK GROWTH !!! =============== \n");
     vm_stack_growth (addr);
   }
 
@@ -272,6 +287,10 @@ hash_page_copy (struct hash_elem *e, void *aux) {
       break;
 
     case VM_FILE:
+      vm_alloc_page (vm_type, parent_page->va, writable);
+      child_page = spt_find_page (dst, parent_page->va);
+      vm_do_claim_page (child_page);
+      memcpy (child_page->frame->kva, parent_page->frame->kva, PGSIZE);
       break;
 
     default:
@@ -295,14 +314,27 @@ supplemental_page_table_copy (struct supplemental_page_table *dst, struct supple
 
 static void
 hash_page_kill (struct hash_elem *e, void *aux) {
-  struct page *page = hash_entry(e, struct page, h_elem);
-
+  struct page *page = hash_entry (e, struct page, h_elem);
   vm_dealloc_page (page);
+}
+
+static void
+file_munmap (struct hash_elem *e, void *aux) {
+  struct page *page = hash_entry (e, struct page, h_elem);
+  enum vm_type type = page->operations->type;
+  // printf ("vm { spt_kill } : kva, page_type = { %p, %d }\n", page->frame->kva, page->operations->type);
+
+  if (VM_TYPE (type) == VM_FILE) {
+    // printf ("vm { spt_kill } fil_type is VM_FILE !! \n");
+    munmap (page->va);
+  }
 }
 
 /* Free the resource hold by the supplemental page table */
 void
 supplemental_page_table_kill (struct supplemental_page_table *spt) {
+  // hash_apply (&spt->spt_hash, file_munmap);
+  // print_spt ();
   hash_clear (&spt->spt_hash, hash_page_kill);
 }
 
@@ -347,7 +379,7 @@ print_spt(void) {
   enum vm_type type;
   char *type_str, *stack_str, *writable_str, *dirty_str, *dirty_k_str, *dirty_u_str;
   file_info *f_info;
-  uint32_t ofs;
+  int32_t ofs;
   stack_str = " - ";
 
   hash_first (&i, h);

@@ -21,7 +21,9 @@ test_main (void)
   CHECK (create ("sample.txt", strlen (sample)), "create \"sample.txt\"");
   CHECK ((handle = open ("sample.txt")) > 1, "open \"sample.txt\"");
   CHECK ((map = mmap (ACTUAL, 4096, 1, handle, 0)) != MAP_FAILED, "mmap \"sample.txt\"");
+  // handle의 파일을 ACTUAL에 저장
   memcpy (ACTUAL, sample, strlen (sample));
+  // ACTUAL에 sample의 데이터를 copy
   munmap (map);
 
   /* Read back via read(). */

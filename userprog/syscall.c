@@ -58,9 +58,6 @@ void
 syscall_handler (struct intr_frame *f) {
   //? 시스템콜 호출 번호 - %rax  - 인자 - %rdi, $rsi, %rdx, %r10, %r8, %r9
 
-#ifdef VM
-  thread_current ()->f_rsp = f->rsp;
-#endif
   int sys_number = f->R.rax;
 
   switch (sys_number) {
@@ -143,11 +140,16 @@ static void
 check_addr (const char *file) {
   void *addr = (void *)file;
 #ifdef VM
-  bool find_succ = spt_find_page (&thread_current ()->spt, addr);
-
-  if (!(addr && is_user_vaddr (addr) && find_succ)) {
+  if (!addr || !is_user_vaddr (addr)) {
     exit (-1);
   }
+  // else {
+  //   struct page *find_page = spt_find_page (&thread_current ()->spt, addr);
+  //   bool writable = (uint64_t)find_page->va & PTE_W;
+  //   if (!writable) {
+  //     exit (-1);
+  //   }
+  // }
 #else
   if (!is_user_vaddr (addr) || addr == NULL || !pml4_get_page (thread_current ()->pml4, addr)) {
     exit (-1);
@@ -156,26 +158,35 @@ check_addr (const char *file) {
 }
 
 static void
-check_buffer (const char *buffer) {
+check_with_spt (const char *file) {
+  void *addr = (void *)file;
 #ifdef VM
-  if (!(buffer && is_user_vaddr (buffer))) {
-    exit (-1);
-  }
-  struct thread *curr = thread_current ();
-  struct page *find_page = spt_find_page (&curr->spt, (void *)buffer);
-
-  if (!find_page) {
-    if ((uint64_t)buffer < USER_STACK && (curr->f_rsp < (uint64_t)buffer)) {
-      return;
-    }
+  if (!addr || !is_user_vaddr (addr)) {
     exit (-1);
   }
   else {
+    struct page *find_page = spt_find_page (&thread_current ()->spt, addr);
     bool writable = (uint64_t)find_page->va & PTE_W;
     if (!writable) {
       exit (-1);
     }
   }
+
+  // struct thread *curr = thread_current ();
+  // struct page *find_page = spt_find_page (&curr->spt, (void *)buffer);
+
+  // if (!find_page) {
+  //   if ((uint64_t)buffer < USER_STACK && (curr->f_rsp < (uint64_t)buffer)) {
+  //     return;
+  //   }
+  //   exit (-1);
+  // }
+  // else {
+  //   bool writable = (uint64_t)find_page->va & PTE_W;
+  //   if (!writable) {
+  //     exit (-1);
+  //   }
+  // }
 #else
   if (!is_user_vaddr (buffer) || buffer == NULL || !pml4_get_page (thread_current ()->pml4, buffer)) {
     exit(-1);
@@ -194,7 +205,7 @@ exit (int status) {
   curr->exit_status = status;
 
   printf ("%s: exit(%d)\n", thread_name(), curr->exit_status);
-
+  // print_spt ();
   thread_exit ();
 }
 
@@ -279,7 +290,7 @@ filesize (int fd) {
 static int
 read (int fd, void *buffer, unsigned length) {
   struct thread *curr = thread_current ();
-  check_buffer (buffer);
+  check_with_spt (buffer);
   if (fd > FD_COUNT_LIMIT || fd == STDOUT_FILENO || fd < 0) {
     return -1;
   }
@@ -293,12 +304,13 @@ read (int fd, void *buffer, unsigned length) {
   lock_acquire (&filesys_lock);
   int read_size = file_read(f, buffer, length);
   lock_release (&filesys_lock);
+  // printf ("file { read } : read = { %s }\n", buffer);
   return read_size;
 }
 
 static int
 write (int fd, const void *buffer, unsigned length) {
-  check_addr(buffer);
+  check_addr (buffer);
   if (fd > FD_COUNT_LIMIT || fd <= 0)
     return -1;
 
@@ -370,20 +382,28 @@ void *
 mmap (void *addr, size_t length, int writable, int fd, off_t offset) {
   // printf ("syscall ( mmap ) : START \n");
 
+  struct thread *curr = thread_current ();
   void * succ = NULL;
-  if (length < offset || !addr || !length || fd > FD_COUNT_LIMIT || fd <= 1) {
+
+  if (length < offset || !length || (int)length < 0
+    || fd > FD_COUNT_LIMIT || fd <= 1
+    || !addr || !is_user_vaddr (addr) || !(pg_ofs (addr) == 0)
+    || !(pg_ofs (offset) == 0)
+    ) {
+    // printf ("syscall ( mmap ) : HERE\n");
     return NULL;
   }
 
-  struct thread *curr = thread_current ();
   struct file *file = curr->fd_table[fd];
 
-  if (file == NULL)
+  if (file == NULL) {
     return NULL;
+  }
 
+  struct file *n_f = file_reopen (file);
   // printf ("syscall ( mmap ) : addr, file in kernel = { %p, %p }\n", addr, file);
-  succ = do_mmap (addr, length, writable, file, offset);
-  // print_spt ();
+  // printf ("file { file_back_destroy } : file, n_f = { %p, %p } \n", file, n_f);
+  succ = do_mmap (addr, length, writable, n_f, offset);
   return succ;
 }
 

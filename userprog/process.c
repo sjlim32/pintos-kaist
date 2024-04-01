@@ -37,6 +37,7 @@ static void __do_fork (void *);
 /* --- Project 2 - System call --- */
 static void argument_passing (struct intr_frame *if_, int argv_cnt, char **argv_list);
 static struct thread *get_child (int tid);
+static void child_wait_caller (struct thread *curr);
 
 /* --- Project 3 - VM --- */
 static bool setup_stack (struct intr_frame *if_);
@@ -331,23 +332,18 @@ process_wait (tid_t child_tid) {
 void
 process_exit (void) {
   struct thread *curr = thread_current ();
-  struct list_elem *e;
 
-  if (!list_empty (&curr->child_list)) {
-    for (e = list_begin (&curr->child_list); e != list_end (&curr->child_list); e = list_next (e)) {
-      struct thread *t = list_entry (e, struct thread, c_elem);
-      process_wait (t->tid);
-    }
-  }
+  child_wait_caller (curr);
+
+  file_close (curr->runn_file);
+  process_cleanup ();
 
   for (int fd = 0; fd < FD_COUNT_LIMIT; fd++) {
     close(fd);
   }
 
-  palloc_free_multiple(curr->fd_table, FDT_PAGES);
-  file_close(curr->runn_file);
+  palloc_free_multiple (curr->fd_table, FDT_PAGES);
 
-  process_cleanup ();
 
   sema_up(&curr->wait_sema);                          //* WAIT : signal to parent
   sema_down(&curr->exit_sema);
@@ -607,7 +603,8 @@ validate_segment (const struct Phdr *phdr, struct file *file) {
 }
 
 //! 내 밑에 같은 자식 스레드가 존재할 경우, 반환
-struct thread *get_child (int tid) {
+struct thread *
+  get_child (int tid) {
   struct thread *curr = thread_current ();
   struct list *child_list = &curr->child_list;
   struct list_elem *e;
@@ -622,6 +619,18 @@ struct thread *get_child (int tid) {
   }
 
   return NULL;
+}
+
+static void
+child_wait_caller (struct thread *curr) {
+  struct list_elem *e;
+
+  if (!list_empty (&curr->child_list)) {
+    for (e = list_begin (&curr->child_list); e != list_end (&curr->child_list); e = list_next (e)) {
+      struct thread *t = list_entry (e, struct thread, c_elem);
+      process_wait (t->tid);
+    }
+  }
 }
 
 #ifndef VM
@@ -735,6 +744,9 @@ lazy_load_segment (struct page *page, void *aux) {
   // printf ("lazy_load_segment - f_info : [ file, read_bytes, ofs ] = { %p, %d, %d }\n", f_info->file, (int)f_info->read_bytes, f_info->ofs);
   void *read_addr = pg_round_down((void *)page->frame->kva);
 
+  memcpy (page->file.aux, aux, sizeof (file_info *));
+  memcpy (page->anon.aux, aux, sizeof (file_info *));
+
   file_seek(f_info->file, f_info->ofs);
   if (file_read (f_info->file, read_addr, f_info->read_bytes) != (int)f_info->read_bytes) {
     palloc_free_page (pg_round_down (page));
@@ -796,7 +808,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 static bool
 setup_stack (struct intr_frame *if_) {
 	bool success = false;
-	void *stack_bottom = (void *) (((uint8_t *) USER_STACK) - PGSIZE);
+  void *stack_bottom = (void *)(((uint8_t *)USER_STACK) - PGSIZE);
 
   if (vm_alloc_page (VM_ANON | IS_STACK, stack_bottom, 1) && vm_claim_page (stack_bottom)) {
     if_->rsp = USER_STACK;
