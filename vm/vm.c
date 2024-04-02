@@ -7,6 +7,7 @@
 /* ------ Project 3 ------ */
 #include <stdio.h>
 #include "lib/string.h"
+#include "threads/init.h"
 #include "threads/pte.h"
 #include "threads/mmu.h"
 #include "userprog/process.h"
@@ -148,6 +149,9 @@ vm_get_frame (void) {
     PANIC(" ------ todo Swap Disk ------ \n");
   }
 
+  frame->upte = thread_current ()->pml4;
+  frame->kpte = base_pml4;
+
 	ASSERT (frame != NULL);
 	ASSERT (frame->page == NULL);
 	return frame;
@@ -175,21 +179,13 @@ vm_handle_wp (struct page *page UNUSED) {
 /* Return true on success */
 bool
 vm_try_handle_fault (struct intr_frame *f, void *addr, bool user, bool write, bool not_present) {
-  // uintptr_t rsp = user ? thread_current()->f_rsp : f->rsp;
-  // uintptr_t rsp = user ? f->rsp : thread_current ()->tf.rsp;
   uintptr_t rsp = f->rsp;
 
-  // printf (" vm_try_handle_fault - is user, write, not_pre ? = { %d, %d, %d }\n", user, write, not_present);
-  // printf (" vm_try_handle_fault - addr, tf.rsp = { %p , %p }\n", addr, rsp);
-
-  // bool addr_in_stack = (((uint64_t)addr + PGSIZE) <= (rsp - 32)) && (USER_STACK - (uint64_t)addr < (1 << 20));
   bool addr_in_stack = ((uint64_t)addr >= (rsp - 8)) && (USER_STACK - (uint64_t)addr < (1 << 20));
   if (addr_in_stack) {
-    // printf (" =============== !!! RIGHT STACK GROWTH !!! =============== \n");
     vm_stack_growth (addr);
   }
 
-  // printf(" =============== !!! RIGHT PAGE FAULT !!! =============== \n");
   return vm_claim_page (addr);
 }
 
@@ -206,13 +202,11 @@ bool
 vm_claim_page (void *va) {
   struct page *page = spt_find_page (&thread_current()->spt, va);
   if (!page) {
-    // printf ("vm_claim_page : NOT FOUND PAGE || va = { %p }\n", va);
     return false;
   }
 
   bool page_in_stack = (uint64_t)page->uninit.type & IS_STACK;
   if (!page_in_stack) {
-    // printf ("vm_claim_page : NOT PAGE IN STACK\n");
     return false;
   }
 
@@ -239,7 +233,6 @@ vm_do_claim_page (struct page *page) {
     return false;
   }
   frame->kva = (void *)((uint64_t)frame->kva | ((uint64_t)page->va & 0xfff));
-  // print_spt ();
 	return swap_in (page, frame->kva);
 }
 
@@ -257,9 +250,6 @@ hash_page_copy (struct hash_elem *e, void *aux) {
   struct page            *parent_page = hash_entry(e, struct page, h_elem);
   enum vm_type                vm_type = page_get_type (parent_page);
   uint64_t                   writable = (uint64_t)parent_page & PTE_W;
-
-  //? anon 일 때 -> alloc, doclaim, memcpy
-  //? uninit 이면 -> alloc
 
   switch (parent_page->operations->type) {
     struct page    *child_page;
@@ -322,10 +312,8 @@ static void
 file_munmap (struct hash_elem *e, void *aux) {
   struct page *page = hash_entry (e, struct page, h_elem);
   enum vm_type type = page->operations->type;
-  // printf ("vm { spt_kill } : kva, page_type = { %p, %d }\n", page->frame->kva, page->operations->type);
 
   if (VM_TYPE (type) == VM_FILE) {
-    // printf ("vm { spt_kill } fil_type is VM_FILE !! \n");
     munmap (page->va);
   }
 }
@@ -333,8 +321,6 @@ file_munmap (struct hash_elem *e, void *aux) {
 /* Free the resource hold by the supplemental page table */
 void
 supplemental_page_table_kill (struct supplemental_page_table *spt) {
-  // hash_apply (&spt->spt_hash, file_munmap);
-  // print_spt ();
   hash_clear (&spt->spt_hash, hash_page_kill);
 }
 
@@ -367,6 +353,12 @@ struct page *
 }
 
 // ! ------------------------------------ DEBUGGING FUNC ------------------------------------ ! //
+
+bool
+is_dirty (const void *vpage) {
+  return vpage != NULL && ((uint64_t)vpage & PTE_D) != 0;
+}
+
 void
 print_spt(void) {
   struct hash *h = &thread_current()->spt.spt_hash;
@@ -393,11 +385,11 @@ print_spt(void) {
       kva = page->frame->kva;
       // pte = pml4e_walk (thread_current ()->pml4, (uint64_t)page->va, 0);
       writable_str = (uint64_t)page->va & PTE_W ? "YES" : "NO";
-      // dirty_str = pml4_is_dirty (thread_current ()->pml4, page->va) ? "YES" : "NO";
-      // dirty_k_str = is_dirty (page->frame->kpte) ? "YES" : "NO";
-      // dirty_u_str = is_dirty (page->frame->upte) ? "YES" : "NO";
-      dirty_k_str = " - ";
-      dirty_u_str = " - ";
+      dirty_str = pml4_is_dirty (thread_current ()->pml4, page->va) ? "YES" : "NO";
+      dirty_k_str = is_dirty (page->frame->kpte) ? "YES" : "NO";
+      dirty_u_str = is_dirty (page->frame->upte) ? "YES" : "NO";
+      // dirty_k_str = " - ";
+      // dirty_u_str = " - ";
     }
     else {
       kva = NULL;

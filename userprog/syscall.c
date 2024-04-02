@@ -143,13 +143,6 @@ check_addr (const char *file) {
   if (!addr || !is_user_vaddr (addr)) {
     exit (-1);
   }
-  // else {
-  //   struct page *find_page = spt_find_page (&thread_current ()->spt, addr);
-  //   bool writable = (uint64_t)find_page->va & PTE_W;
-  //   if (!writable) {
-  //     exit (-1);
-  //   }
-  // }
 #else
   if (!is_user_vaddr (addr) || addr == NULL || !pml4_get_page (thread_current ()->pml4, addr)) {
     exit (-1);
@@ -171,22 +164,6 @@ check_with_spt (const char *file) {
       exit (-1);
     }
   }
-
-  // struct thread *curr = thread_current ();
-  // struct page *find_page = spt_find_page (&curr->spt, (void *)buffer);
-
-  // if (!find_page) {
-  //   if ((uint64_t)buffer < USER_STACK && (curr->f_rsp < (uint64_t)buffer)) {
-  //     return;
-  //   }
-  //   exit (-1);
-  // }
-  // else {
-  //   bool writable = (uint64_t)find_page->va & PTE_W;
-  //   if (!writable) {
-  //     exit (-1);
-  //   }
-  // }
 #else
   if (!is_user_vaddr (buffer) || buffer == NULL || !pml4_get_page (thread_current ()->pml4, buffer)) {
     exit(-1);
@@ -205,7 +182,7 @@ exit (int status) {
   curr->exit_status = status;
 
   printf ("%s: exit(%d)\n", thread_name(), curr->exit_status);
-  // print_spt ();
+
   thread_exit ();
 }
 
@@ -304,7 +281,6 @@ read (int fd, void *buffer, unsigned length) {
   lock_acquire (&filesys_lock);
   int read_size = file_read(f, buffer, length);
   lock_release (&filesys_lock);
-  // printf ("file { read } : read = { %s }\n", buffer);
   return read_size;
 }
 
@@ -390,7 +366,6 @@ mmap (void *addr, size_t length, int writable, int fd, off_t offset) {
     || !addr || !is_user_vaddr (addr) || !(pg_ofs (addr) == 0)
     || !(pg_ofs (offset) == 0)
     ) {
-    // printf ("syscall ( mmap ) : HERE\n");
     return NULL;
   }
 
@@ -401,8 +376,6 @@ mmap (void *addr, size_t length, int writable, int fd, off_t offset) {
   }
 
   struct file *n_f = file_reopen (file);
-  // printf ("syscall ( mmap ) : addr, file in kernel = { %p, %p }\n", addr, file);
-  // printf ("file { file_back_destroy } : file, n_f = { %p, %p } \n", file, n_f);
   succ = do_mmap (addr, length, writable, n_f, offset);
   return succ;
 }

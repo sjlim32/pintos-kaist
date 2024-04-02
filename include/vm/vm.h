@@ -69,6 +69,10 @@ struct page {
 struct frame {
 	void *kva;
 	struct page *page;
+
+  /* ------ Project 3 ------ */
+  uint64_t *upte;
+  uint64_t *kpte;
 };
 
 /* The function table for page operations.
