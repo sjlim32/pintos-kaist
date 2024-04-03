@@ -20,6 +20,10 @@ void
 vm_init (void) {
 	vm_anon_init ();
 	vm_file_init ();
+
+  /* ------ Project 3 ------ */
+  list_init (&framelist);
+
 #ifdef EFILESYS  /* For project 4 */
 	pagecache_init ();
 #endif
@@ -114,9 +118,9 @@ spt_remove_page (struct supplemental_page_table *spt, struct page *page) {
 /* Get the struct frame, that will be evicted. */
 static struct frame *
 vm_get_victim (void) {
-	struct frame *victim = NULL;
-	 /* TODO: The policy for eviction is up to you. */
+  struct frame *victim = NULL;
 
+  victim = list_entry (list_front (&framelist), struct frame, f_elem);
 	return victim;
 }
 
@@ -124,10 +128,23 @@ vm_get_victim (void) {
  * Return NULL on error.*/
 static struct frame *
 vm_evict_frame (void) {
-	struct frame *victim UNUSED = vm_get_victim ();
-	/* TODO: swap out the victim and return the evicted frame. */
+  struct frame *victim = vm_get_victim ();
 
-	return NULL;
+  if (!victim) {
+    printf ("vm { vm_evict_frame } : NOT FOUND VICTIM FRAME !! \n");
+    return NULL;
+  }
+
+  if (!swap_out (victim->page)) {
+    printf ("vm { vm_evict_frame } : FRAME FAILED SWAP OUT !! \n");
+    return NULL;
+  }
+
+  list_remove (&victim->f_elem);
+  victim->page->frame = NULL;
+  victim->page = NULL;
+
+  return victim;
 }
 
 /*
@@ -143,14 +160,12 @@ vm_get_frame (void) {
   }
   frame->kva = palloc_get_page(PAL_USER | PAL_ZERO);
 
-  //? (palloc 실패) 가상 공간이 없으면, 기존 페이지를 희생(비운 뒤) 만들어 리턴 (스왑)
   if (!frame->kva) {
-    //TODO Swap Disk
-    PANIC(" ------ todo Swap Disk ------ \n");
+    free (frame);
+    frame = vm_evict_frame ();
   }
 
-  frame->upte = thread_current ()->pml4;
-  frame->kpte = base_pml4;
+  list_push_back (&framelist, &frame->f_elem);
 
 	ASSERT (frame != NULL);
 	ASSERT (frame->page == NULL);
@@ -165,9 +180,9 @@ vm_stack_growth (void *addr) {
   struct page *p = spt_find_page (spt, address);
 
   while (!p) {
-    vm_alloc_page (VM_ANON | IS_STACK, pg_round_down (address), true);
+    vm_alloc_page (VM_ANON | IS_STACK, address, true);
     address += PGSIZE;
-    p = spt_find_page (spt, pg_round_down (address));
+    p = spt_find_page (spt, address);
   }
 }
 
@@ -201,15 +216,10 @@ vm_dealloc_page (struct page *page) {
 bool
 vm_claim_page (void *va) {
   struct page *page = spt_find_page (&thread_current()->spt, va);
+
   if (!page) {
     return false;
   }
-
-  bool page_in_stack = (uint64_t)page->uninit.type & IS_STACK;
-  if (!page_in_stack) {
-    return false;
-  }
-
 	return vm_do_claim_page (page);
 }
 
@@ -218,8 +228,8 @@ static bool
 vm_do_claim_page (struct page *page) {
   struct frame  *frame = vm_get_frame ();
   struct thread     *t = thread_current ();
-  uint64_t       uaddr = (uint64_t)page->va & ~PGMASK;
-  uint64_t    writable = (uint64_t)page->va & PTE_W;
+  void *       uaddr = (void *)((uint64_t)page->va & ~PGMASK);
+  void *    writable = (void *)((uint64_t)page->va & PTE_W);
 
   if (!frame) {
     return false;
@@ -228,11 +238,12 @@ vm_do_claim_page (struct page *page) {
 	frame->page = page;
 	page->frame = frame;
 
-  if (!(pml4_get_page (t->pml4, (void *)uaddr) == NULL
-    && pml4_set_page (t->pml4, (void *)uaddr, frame->kva, writable))) {
+
+  if (!(pml4_get_page (t->pml4, uaddr) == NULL
+    && pml4_set_page (t->pml4, uaddr, frame->kva, writable))) {
     return false;
   }
-  frame->kva = (void *)((uint64_t)frame->kva | ((uint64_t)page->va & 0xfff));
+
 	return swap_in (page, frame->kva);
 }
 
@@ -321,6 +332,7 @@ file_munmap (struct hash_elem *e, void *aux) {
 /* Free the resource hold by the supplemental page table */
 void
 supplemental_page_table_kill (struct supplemental_page_table *spt) {
+  // print_spt ();
   hash_clear (&spt->spt_hash, hash_page_kill);
 }
 
@@ -353,12 +365,6 @@ struct page *
 }
 
 // ! ------------------------------------ DEBUGGING FUNC ------------------------------------ ! //
-
-bool
-is_dirty (const void *vpage) {
-  return vpage != NULL && ((uint64_t)vpage & PTE_D) != 0;
-}
-
 void
 print_spt(void) {
   struct hash *h = &thread_current()->spt.spt_hash;
@@ -385,9 +391,9 @@ print_spt(void) {
       kva = page->frame->kva;
       // pte = pml4e_walk (thread_current ()->pml4, (uint64_t)page->va, 0);
       writable_str = (uint64_t)page->va & PTE_W ? "YES" : "NO";
-      dirty_str = pml4_is_dirty (thread_current ()->pml4, page->va) ? "YES" : "NO";
-      dirty_k_str = is_dirty (page->frame->kpte) ? "YES" : "NO";
-      dirty_u_str = is_dirty (page->frame->upte) ? "YES" : "NO";
+      // dirty_str = pml4_is_dirty (thread_current ()->pml4, page->va) ? "YES" : "NO";
+      dirty_k_str = pml4_is_dirty (base_pml4, page->frame->kva) ? "YES" : "NO";
+      dirty_u_str = pml4_is_dirty (thread_current ()->pml4, page->va) ? "YES" : "NO";
       // dirty_k_str = " - ";
       // dirty_u_str = " - ";
     }

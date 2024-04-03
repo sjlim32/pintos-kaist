@@ -740,18 +740,26 @@ install_page (void *upage, void *kpage, bool writable) {
 
 bool
 lazy_load_segment (struct page *page, void *aux) {
+  // printf ("[DBG] lazy laod start\n"); ///
   file_info *f_info = aux;
-  void *read_addr = pg_round_down((void *)page->frame->kva);
+  size_t page_zero_bytes = PGSIZE - f_info->read_bytes;
+  void *read_addr = pg_round_down ((void *)page->frame->kva);
 
   if (page->operations->type == VM_FILE) {
     memcpy (page->file.aux, f_info, sizeof (file_info));
   }
-
+  else if (page->operations->type == VM_ANON) {
+    memcpy (page->anon.aux, f_info, sizeof (file_info));
+  }
+  // printf ("[ dbg ] lazy_load aux = { %d, %d }\n", f_info->ofs, f_info->read_bytes);
   file_seek(f_info->file, f_info->ofs);
   if (file_read (f_info->file, read_addr, f_info->read_bytes) != (int)f_info->read_bytes) {
     palloc_free_page (pg_round_down (page));
     return false;
   }
+  memset (read_addr + f_info->read_bytes, 0, page_zero_bytes);
+
+  // printf ("[DBG] lazy laod END\n"); ///
   return true;
 }
 
@@ -790,7 +798,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
     f_info->file = file;
     f_info->read_bytes = page_read_bytes;
     f_info->ofs = ofs;
-    if (!vm_alloc_page_with_initializer (VM_ANON | IS_STACK, upage, writable, lazy_load_segment, f_info)) {
+    if (!vm_alloc_page_with_initializer (VM_ANON, upage, writable, lazy_load_segment, f_info)) {
       return false;
     }
 		/* Advance. */

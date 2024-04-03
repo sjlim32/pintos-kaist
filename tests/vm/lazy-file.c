@@ -1,4 +1,4 @@
-/* Checks if file-mapped pages are lazy loaded  */
+ /* Checks if file-mapped pages are lazy loaded  */
 
 #include <string.h>
 #include <syscall.h>

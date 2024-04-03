@@ -7,6 +7,8 @@
 #include <stdlib.h>
 /* ----------------------- */
 
+struct list framelist;
+
 enum vm_type {
 	/* page not initialized */
 	VM_UNINIT = 0,
@@ -68,11 +70,10 @@ struct page {
 /* The representation of "frame" */
 struct frame {
 	void *kva;
-	struct page *page;
+  struct page *page;
 
   /* ------ Project 3 ------ */
-  uint64_t *upte;
-  uint64_t *kpte;
+  struct list_elem f_elem;
 };
 
 /* The function table for page operations.
