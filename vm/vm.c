@@ -23,6 +23,7 @@ vm_init (void) {
 
   /* ------ Project 3 ------ */
   list_init (&framelist);
+  lock_init (&spt_lock);
 
 #ifdef EFILESYS  /* For project 4 */
 	pagecache_init ();
@@ -104,14 +105,17 @@ struct page *
 /* Insert PAGE into spt with validation. */
 bool
 spt_insert_page (struct supplemental_page_table *spt, struct page *page) {
+  lock_acquire (&spt_lock);
   bool succ = hash_insert (&spt->spt_hash, &page->h_elem) != NULL ? false : true;
-
+  lock_release (&spt_lock);
   return succ;
 }
 
 void
 spt_remove_page (struct supplemental_page_table *spt, struct page *page) {
+  lock_acquire (&spt_lock);
 	vm_dealloc_page (page);
+  lock_release (&spt_lock);
   return;
 }
 
@@ -131,12 +135,10 @@ vm_evict_frame (void) {
   struct frame *victim = vm_get_victim ();
 
   if (!victim) {
-    printf ("vm { vm_evict_frame } : NOT FOUND VICTIM FRAME !! \n");
     return NULL;
   }
 
   if (!swap_out (victim->page)) {
-    printf ("vm { vm_evict_frame } : FRAME FAILED SWAP OUT !! \n");
     return NULL;
   }
 

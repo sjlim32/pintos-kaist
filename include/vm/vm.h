@@ -8,6 +8,7 @@
 /* ----------------------- */
 
 struct list framelist;
+struct lock spt_lock;
 
 enum vm_type {
 	/* page not initialized */

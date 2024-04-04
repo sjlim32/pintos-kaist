@@ -25,7 +25,7 @@ void
 test_main (void) 
 {
 	size_t i;
-    void* pa;
+  // void* pa;
     char *mem;
 
     for (i = 0 ; i < PAGE_COUNT ; i++) {

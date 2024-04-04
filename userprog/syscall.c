@@ -43,8 +43,6 @@ syscall_init (void) {
 			((uint64_t)SEL_KCSEG) << 32);
 	write_msr(MSR_LSTAR, (uint64_t) syscall_entry);
 
-  lock_init(&filesys_lock);
-
 	/* The interrupt service rountine should not serve any interrupts
 	 * until the syscall_entry swaps the userland stack to the kernel
 	 * mode stack. Therefore, we masked the FLAG_FL. */
@@ -140,7 +138,8 @@ static void
 check_addr (const char *file) {
   void *addr = (void *)file;
 #ifdef VM
-  if (!addr || !is_user_vaddr (addr)) {
+  struct page *find_page = spt_find_page (&thread_current ()->spt, addr);
+  if (!addr || !is_user_vaddr (addr) || !find_page) {
     exit (-1);
   }
 #else
@@ -151,14 +150,14 @@ check_addr (const char *file) {
 }
 
 static void
-check_with_spt (const char *file) {
+check_with_writable (const char *file) {
   void *addr = (void *)file;
 #ifdef VM
-  if (!addr || !is_user_vaddr (addr)) {
+  struct page *find_page = spt_find_page (&thread_current ()->spt, addr);
+  if (!addr || !is_user_vaddr (addr) || !find_page) {
     exit (-1);
   }
   else {
-    struct page *find_page = spt_find_page (&thread_current ()->spt, addr);
     bool writable = (uint64_t)find_page->va & PTE_W;
     if (!writable) {
       exit (-1);
@@ -219,15 +218,26 @@ wait (pid_t pid) {
 static bool
 create (const char* file, unsigned initial_size) {
   check_addr(file);
-  return filesys_create(file, initial_size);
+
+  lock_acquire(&filesys_lock);
+  bool succ = filesys_create(file, initial_size);
+  lock_release(&filesys_lock);
+
+  return succ;
 }
 
 static int
 open (const char *file) {
   check_addr(file);
+
+  lock_acquire(&filesys_lock);
   struct file *f = filesys_open(file);
-  if (f == NULL)
+  lock_release (&filesys_lock);
+
+  if (f == NULL) {
     return -1;
+  }
+
   struct thread *curr = thread_current();
   struct file **fdt = curr->fd_table;
   while (curr->fd_idx < FD_COUNT_LIMIT && fdt[curr->fd_idx]) {
@@ -246,7 +256,12 @@ open (const char *file) {
 static bool
 remove (const char *file) {
   check_addr(file);
-  return filesys_remove(file);
+
+  lock_acquire(&filesys_lock);
+  bool succ = filesys_remove(file);
+  lock_release(&filesys_lock);
+
+  return succ;
 }
 
 static int
@@ -267,7 +282,7 @@ filesize (int fd) {
 static int
 read (int fd, void *buffer, unsigned length) {
   struct thread *curr = thread_current ();
-  check_with_spt (buffer);
+  check_with_writable (buffer);
   if (fd > FD_COUNT_LIMIT || fd == STDOUT_FILENO || fd < 0) {
     return -1;
   }
@@ -281,6 +296,7 @@ read (int fd, void *buffer, unsigned length) {
   lock_acquire (&filesys_lock);
   int read_size = file_read(f, buffer, length);
   lock_release (&filesys_lock);
+
   return read_size;
 }
 
@@ -304,6 +320,7 @@ write (int fd, const void *buffer, unsigned length) {
     lock_acquire (&filesys_lock);
     int write_size = file_write(f, buffer, length);
     lock_release (&filesys_lock);
+
     return write_size;
   }
 }
@@ -342,22 +359,14 @@ close (int fd) {
     return;
 
   curr->fd_table[fd] = NULL;
+
+  lock_acquire (&filesys_lock);
   file_close(f);
+  lock_release (&filesys_lock);
 }
-
-/*
-TODO - file-backed memory
-TODO - page fault 발생 시, 즉시 물리 프레임 할당 및 파일에서 메모리로 데이터가 복사되어야 함
-TODO - 페이지가 ummapped 또는 swap out 시, 콘텐츠의 모든 변경 사항이 파일에 반영되어야 함
-
-TODO - VM 시스템은 mmap 영역에서 페이지를 lazy load 해야함
-TODO - mmap 된 파일 자체를 매핑을 위한 백업 저장소로 사용함
-*/
 
 void *
 mmap (void *addr, size_t length, int writable, int fd, off_t offset) {
-  // printf ("syscall ( mmap ) : START \n");
-
   struct thread *curr = thread_current ();
   void * succ = NULL;
 
@@ -382,10 +391,6 @@ mmap (void *addr, size_t length, int writable, int fd, off_t offset) {
 
 void
 munmap (void *addr) {
-  /*
-  TODO - file-backed memory
-  TODO - 페이지가 ummapped 또는 swap out 시, 콘텐츠의 모든 변경 사항이 파일에 반영되어야 함
-  */
   do_munmap (addr);
   return;
 }

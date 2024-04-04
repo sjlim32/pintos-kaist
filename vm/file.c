@@ -60,7 +60,7 @@ file_backed_swap_out (struct page *page) {
     file_info *f_info = page->file.aux;
 
     if (pml4_is_dirty (thread_current ()->pml4, page->va) || pml4_is_dirty (base_pml4, page->frame->kva)) {
-      file_write_at (f_info->file, pg_round_down (page->frame->kva), f_info->read_bytes, f_info->ofs);
+      file_write_at (f_info->file, page->frame->kva, f_info->read_bytes, f_info->ofs);
     }
   }
 
@@ -79,9 +79,8 @@ file_backed_destroy (struct page *page) {
   if (file_page->aux) {
     file_info *f_info = page->file.aux;
 
-    //* TODO swap 할 때 커널의 dirty 비트를 확인해야함.
-    if (pml4_is_dirty (thread_current ()->pml4, page->va) || pml4_is_dirty (base_pml4, page->frame->kva)) {
-      file_write_at (f_info->file, pg_round_down (page->frame->kva), f_info->read_bytes, f_info->ofs);
+    if (pml4_is_dirty (thread_current ()->pml4, page->va)) {
+      file_write_at (f_info->file, page->frame->kva, f_info->read_bytes, f_info->ofs);
     }
     free (file_page->aux);
   }

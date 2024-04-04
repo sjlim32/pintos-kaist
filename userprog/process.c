@@ -42,6 +42,8 @@ static void child_wait_caller (struct thread *curr);
 /* --- Project 3 - VM --- */
 static bool setup_stack (struct intr_frame *if_);
 
+struct lock page_lock;
+
 /* General process initializer for initd and other process. */
 static void
 process_init (void) {
@@ -84,6 +86,9 @@ initd (void *f_name) {
 #endif
 
 	process_init ();
+
+  /* --- Project 3 - VM --- */
+  lock_init (&filesys_lock);
 
 	if (process_exec (f_name) < 0)
 		PANIC("Fail to launch initd\n");
@@ -321,7 +326,7 @@ process_wait (tid_t child_tid) {
     return -1;
   }
 
-  sema_down (&child->wait_sema);
+  sema_down(&child->wait_sema);
   list_remove(&child->c_elem);
   sema_up(&child->exit_sema);
 
@@ -333,17 +338,16 @@ void
 process_exit (void) {
   struct thread *curr = thread_current ();
 
-  child_wait_caller (curr);
+  child_wait_caller(curr);
 
-  file_close (curr->runn_file);
+  file_close(curr->runn_file);
   process_cleanup ();
 
   for (int fd = 0; fd < FD_COUNT_LIMIT; fd++) {
     close(fd);
   }
 
-  palloc_free_multiple (curr->fd_table, FDT_PAGES);
-
+  palloc_free_multiple(curr->fd_table, FDT_PAGES);
 
   sema_up(&curr->wait_sema);                          //* WAIT : signal to parent
   sema_down(&curr->exit_sema);
@@ -466,7 +470,10 @@ load (const char *file_name, struct intr_frame *if_) {
 	process_activate (thread_current ());
 
 	/* Open executable file. */
+  lock_acquire(&filesys_lock);
 	file = filesys_open (file_name);
+  lock_release(&filesys_lock);
+
 	if (file == NULL) {
 		printf ("load: %s: open failed\n", file_name);
 		goto done;
@@ -740,7 +747,6 @@ install_page (void *upage, void *kpage, bool writable) {
 
 bool
 lazy_load_segment (struct page *page, void *aux) {
-  // printf ("[DBG] lazy laod start\n"); ///
   file_info *f_info = aux;
   size_t page_zero_bytes = PGSIZE - f_info->read_bytes;
   void *read_addr = pg_round_down ((void *)page->frame->kva);
@@ -751,7 +757,7 @@ lazy_load_segment (struct page *page, void *aux) {
   else if (page->operations->type == VM_ANON) {
     memcpy (page->anon.aux, f_info, sizeof (file_info));
   }
-  // printf ("[ dbg ] lazy_load aux = { %d, %d }\n", f_info->ofs, f_info->read_bytes);
+
   file_seek(f_info->file, f_info->ofs);
   if (file_read (f_info->file, read_addr, f_info->read_bytes) != (int)f_info->read_bytes) {
     palloc_free_page (pg_round_down (page));
@@ -759,7 +765,6 @@ lazy_load_segment (struct page *page, void *aux) {
   }
   memset (read_addr + f_info->read_bytes, 0, page_zero_bytes);
 
-  // printf ("[DBG] lazy laod END\n"); ///
   return true;
 }
 

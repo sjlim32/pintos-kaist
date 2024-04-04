@@ -14,7 +14,7 @@ test_main (void)
 {
   int handle;
   void *map;
-  char buf[1024];
+  // char buf[1024];
 
   /* Write file via mmap. */
   CHECK ((handle = open ("large.txt")) > 1, "open \"large.txt\"");

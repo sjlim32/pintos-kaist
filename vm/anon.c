@@ -5,6 +5,7 @@
 /* ------ Project 3 ------ */
 #include <stdio.h>
 #include "kernel/bitmap.h"
+#include "threads/malloc.h"
 #include "threads/init.h"
 #include "threads/vaddr.h"
 #include "threads/mmu.h"
@@ -101,9 +102,9 @@ anon_swap_out (struct page *page) {
 /* Destroy the anonymous page. PAGE will be freed by the caller. */
 static void
 anon_destroy (struct page *page) {
-  struct file_page *anon_page = page;
-  if (page->uninit.aux) {
-    free (page->uninit.aux);
+  struct anon_page *anon_page = &page->anon;
+  if (anon_page->aux) {
+    free (anon_page->aux);
   }
 
   if (page->frame) {
